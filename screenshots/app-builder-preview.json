@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "KlipRing",
+      "hasCanvas": false,
+      "bodyTextLen": 661,
+      "bodyTextHash": "b30cc9261fd311fc2ef8f2a3870c58a21d1ae387283a05fe7938e38e9e831236",
+      "bodyTextPrefix": "Kate Konsole Settings Home Trash KLIPRING × Hold Ctrl+V — wheel ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "KlipRing",
+      "hasCanvas": false,
+      "bodyTextLen": 360,
+      "bodyTextHash": "6c784347fef35c229c9528fccf227a256e1bb243193a80b6b0eab4491299d110",
+      "bodyTextPrefix": "Kate Konsole Settings Home Trash KLIPRING × Hold Ctrl+V — wheel ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

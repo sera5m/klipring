@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Noto Sans Mono", "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-desktop: #14181c;
+  --color-panel: #1c2024;
+  --color-window: #2a2e32;
+  --color-titlebar: #31363b;
+  --color-inset: #232629;
+  --color-fg: #eff0f1;
+  --color-fg-muted: #a8b0b4;
+  --color-fg-subtle: #7a8389;
+  --color-plasma: #3daee9;
+  --color-plasma-fg: #07151c;
+  --color-ring: #9b6dff;
+  --color-ring-deep: #5b2fd1;
+  --color-danger: #e94b35;
+  --color-ok: #2ecc71;
+  --color-border: rgb(255 255 255 / 0.12);
+  --color-glass: rgb(22 18 32 / 0.52);
+  --color-card: rgb(28 24 40 / 0.72);
+  --color-note: #f4e4b3;
+  --color-note-fg: #3b2f14;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-window: 0 18px 48px rgb(0 0 0 / 0.42), 0 2px 6px rgb(0 0 0 / 0.28);
+  --shadow-panel: 0 -6px 24px rgb(0 0 0 / 0.28);
+
+  --text-2xs: 0.625rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-micro: 80ms;
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --motion-slow: 400ms;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-desktop);
+    color: var(--color-fg);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-plasma);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-plasma) 55%, transparent);
+    color: var(--color-fg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .plasma-window {
+    left: 8px !important;
+    top: 8px !important;
+    width: calc(100% - 16px) !important;
+    height: calc(100% - 72px) !important;
+  }
+}
+
+.plasma-panel {
+  background: color-mix(in oklab, var(--color-panel) 88%, transparent);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.plasma-window {
+  background: var(--color-window);
+  box-shadow: var(--shadow-window);
+  border: 1px solid var(--color-border);
+}
+
+.plasma-titlebar {
+  background: var(--color-titlebar);
+}
+
+.glass-card {
+  background: var(--color-card);
+  border: 1px solid color-mix(in oklab, var(--color-ring) 45%, white 12%);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-card-active {
+  background: color-mix(in oklab, var(--color-card) 70%, var(--color-ring) 18%);
+  border-color: color-mix(in oklab, var(--color-plasma) 70%, var(--color-ring));
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--color-plasma) 70%, transparent),
+    0 12px 28px rgb(20 8 40 / 0.5);
+}
+
+.ring-band {
+  background: color-mix(in oklab, var(--color-ring) 28%, transparent);
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--color-ring) 55%, white 20%),
+    0 0 32px color-mix(in oklab, var(--color-ring-deep) 35%, transparent);
+}
+
+.kate-gutter {
+  background: var(--color-inset);
+  color: var(--color-fg-subtle);
+}
+
+.konsole-screen {
+  background: #111417;
+  color: #dce6ea;
+}
+
+.desktop-icon:hover .desktop-icon-label {
+  background: color-mix(in oklab, var(--color-plasma) 55%, transparent);
+  color: var(--color-fg);
+}
+
+@keyframes wheel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wheel-enter {
+  animation: wheel-in var(--motion-fast) var(--ease-smooth-out);
+}
+
+.notice-enter {
+  animation: notice-in var(--motion-fast) var(--ease-smooth-out);
+}
+
+.task-btn[data-active="true"] {
+  background: color-mix(in oklab, var(--color-plasma) 28%, transparent);
+  box-shadow: inset 0 -2px 0 var(--color-plasma);
+}
