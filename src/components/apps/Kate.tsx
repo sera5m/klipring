@@ -15,7 +15,7 @@ Delete / Backspace drops the highlighted slot.
 Middle-click a slot to open it in a new Kate window.
 Hold Ctrl+V and press S to save the slot as a .txt file.
 
-Capacity defaults to 16 (two rings of 8). Open Settings to resize the buffer.
+Capacity defaults to 20 (inner 8, outer 12). Open Settings to resize the buffer.
 `;
 
 type Props = {

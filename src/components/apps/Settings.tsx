@@ -1,4 +1,10 @@
-import { DEFAULT_CAPACITY, MAX_CAPACITY, MIN_CAPACITY } from "@/lib/clipboard/types";
+import {
+  DEFAULT_CAPACITY,
+  MAX_CAPACITY,
+  MIN_CAPACITY,
+  ringCountFor,
+  slotsOnRing,
+} from "@/lib/clipboard/types";
 import { useClipboardStore } from "@/lib/clipboard/store";
 
 export function Settings() {
@@ -9,14 +15,15 @@ export function Settings() {
   const setIgnoreIdentical = useClipboardStore((s) => s.setIgnoreIdentical);
   const clear = useClipboardStore((s) => s.clear);
   const restoreDemo = useClipboardStore((s) => s.restoreDemo);
-  const rings = Math.max(1, Math.ceil(Math.max(capacity, items.length) / 8));
+  const rings = ringCountFor(Math.max(capacity, items.length, 1));
+  const layout = Array.from({ length: rings }, (_, r) => slotsOnRing(r)).join(" + ");
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto bg-window p-5 text-sm">
       <header>
         <h3 className="text-base font-semibold text-balance">Clipboard buffer</h3>
         <p className="mt-1 text-fg-muted text-pretty">
-          Most-recent clip sits at index 0. Length above 8 adds an outer ring.
+          Static slots. Inner ring is 8; each outer ring adds 4 (12, 16, 20). Positions never reflow.
         </p>
       </header>
 
@@ -24,7 +31,7 @@ export function Settings() {
         <div className="mb-2 flex items-center justify-between text-xs font-medium">
           <span>Capacity</span>
           <span className="font-mono text-plasma tabular-nums">
-            {capacity} slots · {rings} ring{rings === 1 ? "" : "s"}
+            {capacity} · {rings} ring{rings === 1 ? "" : "s"} ({layout})
           </span>
         </div>
         <input
@@ -38,9 +45,10 @@ export function Settings() {
           aria-label="Clipboard capacity"
         />
         <div className="mt-1 flex justify-between font-mono text-xs text-fg-subtle tabular-nums">
-          <span>{MIN_CAPACITY}</span>
-          <span>{DEFAULT_CAPACITY}</span>
-          <span>{MAX_CAPACITY}</span>
+          <span>8</span>
+          <span>20</span>
+          <span>36</span>
+          <span>56</span>
         </div>
       </label>
 
@@ -61,8 +69,8 @@ export function Settings() {
 };
 
 std::array<ClipboardItem, ${capacity}> buffer;
-// mutable · most-recent at [0]
-// extra ring when size > 8`}
+// ring 0: 8  · ring 1: 12 · ring 2: 16 · ring 3: 20
+// most-recent at [0] · angles are static`}
       </pre>
 
       <div className="mt-auto flex flex-wrap gap-2">

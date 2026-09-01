@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  ITEMS_PER_RING,
   badgeForIndex,
+  locateOnWheel,
   ringCountFor,
-  ringIndexOf,
-  slotOnRing,
 } from "@/lib/clipboard/types";
 import { clipAgeMs, formatAge, formatKib, preview128, previewShort } from "@/lib/clipboard/format";
 import { openClipInKate, pasteClip, saveClip } from "@/lib/clipboard/actions";
@@ -120,14 +118,13 @@ export function RadialClipboard() {
         >
           {items.length > 0
             ? (() => {
-                const r = ringIndexOf(selected);
-                const slot = slotOnRing(selected);
+                const { ring: r, slot, slots } = locateOnWheel(selected);
                 const outer = geo.inner + geo.thick / 2 + r * (geo.thick + geo.gap);
                 const cx = size / 2;
                 const cy = size / 2;
-                const start =
-                  -Math.PI / 2 + slot * ((Math.PI * 2) / ITEMS_PER_RING) - Math.PI / ITEMS_PER_RING;
-                const end = start + (Math.PI * 2) / ITEMS_PER_RING;
+                const step = (Math.PI * 2) / slots;
+                const start = -Math.PI / 2 + slot * step - step / 2;
+                const end = start + step;
                 const x1 = cx + Math.cos(start) * outer;
                 const y1 = cy + Math.sin(start) * outer;
                 const x2 = cx + Math.cos(end) * outer;
@@ -164,10 +161,9 @@ export function RadialClipboard() {
         ) : null}
 
         {items.map((item, i) => {
-          const r = ringIndexOf(i);
-          const slot = slotOnRing(i);
+          const { ring: r, slot, slots } = locateOnWheel(i);
           const radius = geo.inner + geo.thick / 2 + r * (geo.thick + geo.gap);
-          const angle = -Math.PI / 2 + slot * ((Math.PI * 2) / ITEMS_PER_RING);
+          const angle = -Math.PI / 2 + slot * ((Math.PI * 2) / slots);
           const x = Math.cos(angle) * radius;
           const y = Math.sin(angle) * radius;
           const active = i === selected;

@@ -68,7 +68,7 @@ export const useClipboardStore = create<ClipboardState>()(
       restoreDemo: () => set({ items: SEED_ITEMS, capacity: DEFAULT_CAPACITY }),
     }),
     {
-      name: "klipring-buffer",
+      name: "klipring-buffer-v2",
       skipHydration: true,
       partialize: (s) => ({
         items: s.items,

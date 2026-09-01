@@ -77,4 +77,16 @@ plasmashell[1904]: file:///usr/share/plasma/plasmoids/org.kde.plasma.clipboard/c
     seedAgeMs: 3 * 86400_000,
     text: "The clipboard is not a graveyard of forgotten strings. It is a ring. What you copied last sits at the crown; older voices wait on the outer orbit.",
   },
+  {
+    id: "clip-seed-11",
+    copiedAt: 0,
+    seedAgeMs: 5 * 86400_000,
+    text: "alias clip='wl-paste && echo' # dump the current clipboard",
+  },
+  {
+    id: "clip-seed-12",
+    copiedAt: 0,
+    seedAgeMs: 8 * 86400_000,
+    text: "std::array<ClipboardItem, 20> buffer; // inner 8, outer 12",
+  },
 ];
