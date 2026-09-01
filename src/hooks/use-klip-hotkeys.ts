@@ -38,10 +38,14 @@ export function useKlipHotkeys() {
 
       const mod = isMod(e);
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const isV = key === "v" || e.code === "KeyV";
 
-      if (mod && key === "v" && !e.repeat) {
+      // Swallow Ctrl+V entirely — including auto-repeat — so the browser
+      // does not keep pasting while the chord is held.
+      if (mod && isV) {
         e.preventDefault();
         e.stopPropagation();
+        if (e.repeat) return;
         desk.setMod({ ctrlDown: true, vDown: true });
         if (!wheel.open) {
           const { x, y } = useDesktopStore.getState().pointer;
@@ -63,7 +67,7 @@ export function useKlipHotkeys() {
 
       if (key === "Enter") {
         e.preventDefault();
-        pasteClip(wheel.selected);
+        if (!e.repeat) pasteClip(wheel.selected);
         return;
       }
 
@@ -103,12 +107,12 @@ export function useKlipHotkeys() {
         }
         return;
       }
-      if (e.key === "v" || e.key === "V") {
+      if (e.key === "v" || e.key === "V" || e.code === "KeyV") {
+        e.preventDefault();
+        e.stopPropagation();
+        const shouldPaste = wheel.open && wheel.mode === "hold" && wheel.vDown;
         desk.setMod({ vDown: false });
-        if (wheel.open && wheel.mode === "hold") {
-          e.preventDefault();
-          pasteClip(wheel.selected);
-        }
+        if (shouldPaste) pasteClip(wheel.selected);
       }
     };
 
@@ -142,6 +146,12 @@ export function useKlipHotkeys() {
       if (item) useDesktopStore.getState().notify("Copied", previewShort(item.text, 48));
     };
 
+    const onPaste = (e: ClipboardEvent) => {
+      if (!useDesktopStore.getState().wheel.open) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
     window.addEventListener("pointermove", onPointer, { passive: true });
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
@@ -149,6 +159,7 @@ export function useKlipHotkeys() {
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("auxclick", onAux, true);
     document.addEventListener("copy", onCopy, true);
+    document.addEventListener("paste", onPaste, true);
 
     return () => {
       window.removeEventListener("pointermove", onPointer);
@@ -158,6 +169,7 @@ export function useKlipHotkeys() {
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("auxclick", onAux, true);
       document.removeEventListener("copy", onCopy, true);
+      document.removeEventListener("paste", onPaste, true);
     };
   }, []);
 }

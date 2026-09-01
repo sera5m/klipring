@@ -8,8 +8,8 @@ A Plasma-style radial clipboard lives on this desktop.
 1. Select any of this text
 2. Press Ctrl+C — the clip lands at slot 1 (most recent)
 3. Hold Ctrl+V — a hollow purple wheel opens on the cursor
-4. Scroll, press 1–9 / 0, or use arrows to walk the ring
-5. Release V (or Enter) to paste into this editor
+4. Hover a slice — or scroll, 1–9 / 0, arrows
+5. Release V to paste once (Enter also pastes once)
 
 Delete / Backspace drops the highlighted slot.
 Middle-click a slot to open it in a new Kate window.

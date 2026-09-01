@@ -1,0 +1,67 @@
+# Maintainer: sera5m
+pkgname=klipring
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Radial Ctrl+V clipboard pie for KDE Plasma"
+arch=('any')
+url='https://github.com/sera5m/klipring'
+license=('MIT')
+depends=('python' 'python-pyside6' 'qt6-base' 'qt6-wayland')
+optdepends=(
+  'wtype: paste into the focused window on Wayland (recommended)'
+  'ydotool: Wayland paste fallback'
+  'xdotool: paste on X11'
+  'wl-clipboard: extra clipboard sync'
+  'kate: open clips in the default KDE editor'
+  'kwriteconfig6: auto-bind the Ctrl+V shortcut on first run'
+)
+makedepends=('git')
+install=klipring.install
+
+if [[ -d "${startdir}/klipring" ]]; then
+  source=()
+  sha256sums=()
+else
+  source=("git+${url}.git#branch=main")
+  sha256sums=('SKIP')
+fi
+
+package() {
+  local root
+  if [[ -d "${startdir}/klipring" ]]; then
+    root="${startdir}"
+  else
+    root="${srcdir}/klipring/native"
+  fi
+
+  install -d "${pkgdir}/usr/lib/klipring"
+  cp -a "${root}/klipring/." "${pkgdir}/usr/lib/klipring/"
+  find "${pkgdir}/usr/lib/klipring" -type d -name '__pycache__' -exec rm -rf {} +
+  find "${pkgdir}/usr/lib/klipring" -type f -name 'test_*.py' -delete
+
+  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/klipring" << 'EOF'
+#!/usr/bin/env python3
+import sys
+sys.path.insert(0, "/usr/lib")
+from klipring.__main__ import main
+raise SystemExit(main())
+EOF
+
+  install -Dm644 "${root}/share/applications/klipring.desktop" \
+    "${pkgdir}/usr/share/applications/klipring.desktop"
+  install -Dm644 "${root}/share/applications/klipring-show.desktop" \
+    "${pkgdir}/usr/share/applications/klipring-show.desktop"
+  install -Dm644 "${root}/share/kglobalaccel/klipring.desktop" \
+    "${pkgdir}/usr/share/kglobalaccel/klipring.desktop"
+  install -Dm644 "${root}/share/autostart/klipring.desktop" \
+    "${pkgdir}/etc/xdg/autostart/klipring.desktop"
+  install -Dm644 "${root}/share/dbus-1/services/org.klipring.App.service" \
+    "${pkgdir}/usr/share/dbus-1/services/org.klipring.App.service"
+  install -Dm644 "${root}/share/icons/hicolor/scalable/apps/klipring.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/klipring.svg"
+
+  local license="${root}/../LICENSE"
+  if [[ -f "$license" ]]; then
+    install -Dm644 "$license" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  fi
+}

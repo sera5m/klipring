@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=KlipRing
+Comment=Show the KlipRing clipboard pie
+Exec=klipring --show
+Icon=klipring
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+X-KDE-GlobalAccel-CommandShortcut=true
+X-KDE-Shortcuts=Ctrl+V
+Actions=Show;
+
+[Desktop Action Show]
+Name=Show KlipRing
+Exec=klipring --show

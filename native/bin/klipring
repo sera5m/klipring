@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+candidates = [
+    Path("/usr/lib"),
+    Path(__file__).resolve().parent.parent,
+]
+for root in candidates:
+    if (root / "klipring" / "__main__.py").exists():
+        sys.path.insert(0, str(root))
+        break
+
+from klipring.__main__ import main
+
+raise SystemExit(main())

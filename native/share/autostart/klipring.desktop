@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KlipRing
+Comment=Radial clipboard daemon
+Exec=klipring
+Icon=klipring
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel

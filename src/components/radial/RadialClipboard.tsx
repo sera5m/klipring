@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   badgeForIndex,
+  hitIndexAt,
   locateOnWheel,
   ringCountFor,
+  slotsOnRing,
+  startIndexOfRing,
 } from "@/lib/clipboard/types";
 import { clipAgeMs, formatAge, formatKib, preview128, previewShort } from "@/lib/clipboard/format";
 import { openClipInKate, pasteClip, saveClip } from "@/lib/clipboard/actions";
@@ -40,6 +43,26 @@ function layout(count: number, originX: number, originY: number, vw: number, vh:
   return { rings, inner, thick, gap, maxR, cx, cy, mobile, size, scale };
 }
 
+function annularSector(
+  cx: number,
+  cy: number,
+  rInner: number,
+  rOuter: number,
+  a0: number,
+  a1: number,
+) {
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const x0o = cx + Math.cos(a0) * rOuter;
+  const y0o = cy + Math.sin(a0) * rOuter;
+  const x1o = cx + Math.cos(a1) * rOuter;
+  const y1o = cy + Math.sin(a1) * rOuter;
+  const x1i = cx + Math.cos(a1) * rInner;
+  const y1i = cy + Math.sin(a1) * rInner;
+  const x0i = cx + Math.cos(a0) * rInner;
+  const y0i = cy + Math.sin(a0) * rInner;
+  return `M ${x0o} ${y0o} A ${rOuter} ${rOuter} 0 ${large} 1 ${x1o} ${y1o} L ${x1i} ${y1i} A ${rInner} ${rInner} 0 ${large} 0 ${x0i} ${y0i} Z`;
+}
+
 export function RadialClipboard() {
   const wheel = useDesktopStore((s) => s.wheel);
   const items = useClipboardStore((s) => s.items);
@@ -65,6 +88,16 @@ export function RadialClipboard() {
   const selected = items.length ? Math.min(wheel.selected, items.length - 1) : 0;
   const selectedItem = items[selected];
   const size = geo.size;
+
+  const hoverSelect = (clientX: number, clientY: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    const dx = ((clientX - rect.left) / rect.width) * size - size / 2;
+    const dy = ((clientY - rect.top) / rect.height) * size - size / 2;
+    const hit = hitIndexAt(dx, dy, items.length, geo.inner, geo.thick, geo.gap);
+    if (hit != null) setSelected(hit);
+  };
+
   const content = (
     <div className="pointer-events-none fixed inset-0 z-[80]" role="presentation">
       {wheel.mode === "latch" ? (
@@ -80,6 +113,7 @@ export function RadialClipboard() {
         role="listbox"
         aria-label="Clipboard ring"
         aria-activedescendant={selectedItem ? `clip-${selectedItem.id}` : undefined}
+        onPointerMove={(e) => hoverSelect(e.clientX, e.clientY, e.currentTarget)}
         style={{
           left: geo.cx - (size * geo.scale) / 2,
           top: geo.cy - (size * geo.scale) / 2,
@@ -111,36 +145,43 @@ export function RadialClipboard() {
           );
         })}
 
-        <svg
-          className="pointer-events-none absolute inset-0"
-          viewBox={`0 0 ${size} ${size}`}
-          aria-hidden
-        >
-          {items.length > 0
-            ? (() => {
-                const { ring: r, slot, slots } = locateOnWheel(selected);
-                const outer = geo.inner + geo.thick / 2 + r * (geo.thick + geo.gap);
-                const cx = size / 2;
-                const cy = size / 2;
-                const step = (Math.PI * 2) / slots;
-                const start = -Math.PI / 2 + slot * step - step / 2;
-                const end = start + step;
-                const x1 = cx + Math.cos(start) * outer;
-                const y1 = cy + Math.sin(start) * outer;
-                const x2 = cx + Math.cos(end) * outer;
-                const y2 = cy + Math.sin(end) * outer;
-                const d = `M ${x1} ${y1} A ${outer} ${outer} 0 0 1 ${x2} ${y2}`;
-                return (
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="var(--color-plasma)"
-                    strokeWidth={geo.mobile ? 4 : 5}
-                    strokeLinecap="round"
-                  />
-                );
-              })()
-            : null}
+        <svg className="absolute inset-0" viewBox={`0 0 ${size} ${size}`} aria-hidden>
+          {Array.from({ length: geo.rings }, (_, r) => {
+            const slots = slotsOnRing(r);
+            const start = startIndexOfRing(r);
+            const rOuter = geo.inner + geo.thick + r * (geo.thick + geo.gap);
+            const rInner = rOuter - geo.thick;
+            const cx = size / 2;
+            const cy = size / 2;
+            const step = (Math.PI * 2) / slots;
+            const pad = Math.min(0.02, step * 0.045);
+            return Array.from({ length: slots }, (__, slot) => {
+              const index = start + slot;
+              const occupied = index < items.length;
+              const active = occupied && index === selected;
+              const a0 = -Math.PI / 2 + slot * step - step / 2 + pad;
+              const a1 = a0 + step - pad * 2;
+              const state = active ? "active" : occupied ? "full" : "empty";
+              return (
+                <path
+                  key={`${r}-${slot}`}
+                  d={annularSector(cx, cy, rInner + 1.5, rOuter - 1.5, a0, a1)}
+                  className="ring-slice"
+                  data-state={state}
+                  onPointerEnter={() => {
+                    if (occupied) setSelected(index);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!occupied) return;
+                    setSelected(index);
+                    if (wheel.mode === "latch") pasteClip(index);
+                  }}
+                />
+              );
+            });
+          })}
         </svg>
 
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -148,8 +189,8 @@ export function RadialClipboard() {
             <span className="font-mono text-xs text-plasma tabular-nums">
               {items.length ? `${selected + 1}/${items.length}` : "0/0"}
             </span>
-            <span className="max-w-28 text-2xs leading-tight text-fg-muted">
-              {wheel.mode === "hold" ? "release V to paste" : "Enter or tap to paste"}
+            <span className="max-w-32 text-2xs leading-tight text-fg-muted">
+              {wheel.mode === "hold" ? "hover a slice · release V" : "hover · click to paste"}
             </span>
           </div>
         </div>
@@ -170,29 +211,13 @@ export function RadialClipboard() {
           const badge = badgeForIndex(i);
           const age = formatAge(clipAgeMs(item, now || Date.now()));
           return (
-            <button
+            <div
               key={item.id}
               id={`clip-${item.id}`}
-              type="button"
               role="option"
               aria-selected={active}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setSelected(i);
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (active || wheel.mode === "latch") pasteClip(i);
-                else setSelected(i);
-              }}
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                pasteClip(i);
-              }}
               className={cn(
-                "glass-card absolute rounded-md px-2 py-1.5 text-left transition-[transform,opacity,border-color] duration-150 ease-out",
+                "glass-card pointer-events-none absolute rounded-md px-2 py-1.5 text-left transition-[transform,opacity,border-color] duration-150 ease-out",
                 active ? "glass-card-active z-10" : "z-0 opacity-90",
               )}
               style={{
@@ -229,7 +254,7 @@ export function RadialClipboard() {
               >
                 {active ? preview128(item.text) : previewShort(item.text, geo.mobile ? 22 : 32)}
               </p>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -237,7 +262,7 @@ export function RadialClipboard() {
       {selectedItem ? (
         <div className="pointer-events-auto absolute inset-x-0 bottom-16 z-[81] mx-auto w-full max-w-xl px-3">
           <div className="glass-card flex flex-wrap items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-fg-muted">
-            <span className="hidden sm:inline">Enter paste</span>
+            <span className="hidden sm:inline">Release V to paste</span>
             <span>Del drop</span>
             <span>MMB Kate</span>
             <span>S save</span>

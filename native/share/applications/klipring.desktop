@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=KlipRing
+GenericName=Radial clipboard
+Comment=Hold Ctrl+V for a radial clipboard pie on KDE Plasma
+Exec=klipring
+Icon=klipring
+Terminal=false
+Categories=Utility;Qt;KDE;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-KDE-Autostart-Phase=2

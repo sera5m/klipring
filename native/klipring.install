@@ -1,0 +1,19 @@
+post_install() {
+  echo ""
+  echo "==> KlipRing"
+  echo "    Start it:           klipring"
+  echo "    (or log out/in — autostart is installed)"
+  echo "    Paste helper:       sudo pacman -S wtype"
+  echo "    Bind the chord:     System Settings → Keyboard → Shortcuts → KlipRing → Ctrl+V"
+  echo "    If an app still eats Ctrl+V, assign the shortcut there once."
+  echo ""
+}
+
+post_upgrade() {
+  post_install
+}
+
+post_remove() {
+  echo "==> KlipRing removed. Delete leftover state with:"
+  echo "    rm -rf ~/.local/share/klipring ~/.config/klipring"
+}

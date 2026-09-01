@@ -87,8 +87,8 @@ export function PlasmaDesktop() {
           </div>
           <ul className="space-y-1.5 text-xs leading-5">
             <li>Hold Ctrl+V — wheel on cursor</li>
-            <li>Scroll / 1–9 / 0 / arrows</li>
-            <li>Release V or Enter — paste</li>
+            <li>Hover a slice (or scroll / 1–9)</li>
+            <li>Release V — paste once</li>
             <li>Del — drop slot</li>
             <li>Middle-click — open in Kate</li>
             <li>Ctrl+V then S — save .txt</li>

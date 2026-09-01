@@ -4,9 +4,10 @@ import { pasteIntoEditor } from "@/lib/desktop/editors";
 import { useDesktopStore } from "@/lib/desktop/store";
 
 export function pasteClip(index: number) {
+  const desk = useDesktopStore.getState();
+  if (!desk.wheel.open) return;
   const { items } = useClipboardStore.getState();
   const item = items[index];
-  const desk = useDesktopStore.getState();
   if (!item) {
     desk.notify("Buffer empty", "Copy something first.");
     desk.closeWheel();

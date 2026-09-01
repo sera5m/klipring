@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KlipRing
+Comment=Show the radial clipboard pie
+Exec=klipring --show
+Icon=klipring
+StartupNotify=false
+X-KDE-Shortcuts=Ctrl+V
+X-KDE-GlobalAccel-CommandShortcut=true

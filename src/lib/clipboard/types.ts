@@ -58,6 +58,37 @@ export function slotOnRing(itemIndex: number): number {
   return locateOnWheel(itemIndex).slot;
 }
 
+/**
+ * Hit-test a point in wheel-local coords (origin at centre, y down).
+ * Slot 0 sits at 12 o’clock; wedges are static.
+ */
+export function hitIndexAt(
+  dx: number,
+  dy: number,
+  itemCount: number,
+  inner: number,
+  thick: number,
+  gap: number,
+): number | null {
+  if (itemCount <= 0) return null;
+  const dist = Math.hypot(dx, dy);
+  const rings = ringCountFor(itemCount);
+  for (let r = 0; r < rings; r++) {
+    const outer = inner + thick + r * (thick + gap);
+    const innerR = outer - thick;
+    if (dist < innerR || dist > outer) continue;
+    const slots = slotsOnRing(r);
+    let fromNorth = Math.atan2(dx, -dy);
+    if (fromNorth < 0) fromNorth += Math.PI * 2;
+    const step = (Math.PI * 2) / slots;
+    const slot =
+      Math.floor(((fromNorth + step / 2) % (Math.PI * 2)) / step) % slots;
+    const index = startIndexOfRing(r) + slot;
+    return index < itemCount ? index : null;
+  }
+  return null;
+}
+
 /** Number-row mapping: 1–9 → items 1–9 (index 0–8), 0 → item 10 (index 9). */
 export function indexFromDigitKey(digit: string): number | null {
   if (digit.length !== 1 || digit < "0" || digit > "9") return null;

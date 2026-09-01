@@ -136,12 +136,33 @@
 }
 
 .ring-band {
-  background: color-mix(in oklab, var(--color-ring) 28%, transparent);
+  background: color-mix(in oklab, var(--color-ring) 22%, transparent);
   backdrop-filter: blur(10px) saturate(1.15);
   -webkit-backdrop-filter: blur(10px) saturate(1.15);
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--color-ring) 55%, white 20%),
     0 0 32px color-mix(in oklab, var(--color-ring-deep) 35%, transparent);
+}
+
+.ring-slice {
+  fill: color-mix(in oklab, var(--color-ring) 18%, transparent);
+  stroke: color-mix(in oklab, var(--color-ring) 72%, white 12%);
+  stroke-width: 1.75;
+  transition:
+    fill 120ms var(--ease-out),
+    stroke 120ms var(--ease-out);
+}
+
+.ring-slice[data-state="active"] {
+  fill: color-mix(in oklab, var(--color-plasma) 42%, var(--color-ring) 12%);
+  stroke: var(--color-plasma);
+  stroke-width: 2.5;
+}
+
+.ring-slice[data-state="empty"] {
+  fill: color-mix(in oklab, var(--color-ring) 7%, transparent);
+  stroke: color-mix(in oklab, var(--color-ring) 34%, transparent);
+  stroke-width: 1.25;
 }
 
 .kate-gutter {
