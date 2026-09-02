@@ -6,7 +6,7 @@ pkgdesc="Radial Ctrl+V clipboard pie for KDE Plasma"
 arch=('any')
 url='https://github.com/sera5m/klipring'
 license=('MIT')
-depends=('python' 'python-pyside6' 'qt6-base' 'qt6-wayland')
+depends=('python' 'pyside6' 'qt6-base' 'qt6-wayland')
 optdepends=(
   'wtype: paste into the focused window on Wayland (recommended)'
   'ydotool: Wayland paste fallback'
