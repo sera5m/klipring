@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import shutil
 from pathlib import Path
@@ -39,6 +40,12 @@ class Bridge(QObject):
 
     @Slot()
     def Show(self) -> None:
+        self._app.show_overlay()
+
+    @Slot(str)
+    def ShowActivated(self, token: str) -> None:
+        if token:
+            os.environ["XDG_ACTIVATION_TOKEN"] = token
         self._app.show_overlay()
 
     @Slot()
@@ -319,7 +326,12 @@ def _already_running_show() -> bool:
         return False
     if registered is False:
         return False
-    msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", "Show")
+    token = os.environ.get("XDG_ACTIVATION_TOKEN", "")
+    if token:
+        msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", "ShowActivated")
+        msg.setArguments([token])
+    else:
+        msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", "Show")
     bus.call(msg)
     return True
 

@@ -55,22 +55,13 @@ class Overlay(QWidget):
         on_open: Callable[[int], None],
         on_save: Callable[[int], None],
     ) -> None:
-        anchor = QWidget()
-        anchor.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowDoesNotAcceptFocus
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        anchor.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        anchor.resize(1, 1)
         super().__init__(
-            anchor,
-            Qt.WindowType.Popup
-            | Qt.WindowType.FramelessWindowHint
+            None,
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
             | Qt.WindowType.NoDropShadowWindowHint,
         )
-        self._anchor = anchor
         self.buffer = buffer
         self.on_paste = on_paste
         self.on_drop = on_drop
@@ -90,9 +81,13 @@ class Overlay(QWidget):
         self._tick = QTimer(self)
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self.update)
+        self._chord = QTimer(self)
+        self._chord.setInterval(16)
+        self._chord.timeout.connect(self._poll_chord)
         self._icons: dict[str, QIcon] = {}
         self._done = False
         self._armed_at = 0.0
+        self._saw_ctrl = False
 
     def popup(self, pos: QPoint | None = None) -> None:
         if self.isVisible():
@@ -111,45 +106,42 @@ class Overlay(QWidget):
             raw.x(), raw.y(), geo.left(), geo.top(), geo.right(), geo.bottom(), radius, pad=pad
         )
         side = int(2 * (radius + pad) + 8)
-        self._anchor.setGeometry(int(raw.x()), int(raw.y()), 1, 1)
-        self._anchor.show()
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
         self.v_down = True
         self._done = False
+        self._saw_ctrl = False
         self._armed_at = time.monotonic()
         self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
         self._tick.start()
+        self._chord.start()
         self.show()
         self.raise_()
-        self.setFocus(Qt.FocusReason.PopupFocusReason)
-        QTimer.singleShot(16, self._arm_input)
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.requestActivate()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
         self.update()
 
-    def _arm_input(self) -> None:
-        if not self.isVisible():
+    def _poll_chord(self) -> None:
+        if self._done or not self.isVisible():
             return
-        self.raise_()
-        self.setFocus(Qt.FocusReason.PopupFocusReason)
-        self.grabKeyboard()
-        self.grabMouse()
+        mods = QGuiApplication.queryKeyboardModifiers()
+        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+        if ctrl:
+            self._saw_ctrl = True
+            return
+        if self._saw_ctrl and time.monotonic() - self._armed_at > 0.08:
+            self.dismiss(True)
 
     def dismiss(self, paste: bool = False) -> None:
         if self._done:
             return
         self._done = True
         self._tick.stop()
-        try:
-            self.releaseMouse()
-        except RuntimeError:
-            pass
-        try:
-            self.releaseKeyboard()
-        except RuntimeError:
-            pass
+        self._chord.stop()
         self.hide()
-        self._anchor.hide()
         if paste and self.buffer.items:
             idx = max(0, min(self.selected, len(self.buffer.items) - 1))
             self.on_paste(idx)
