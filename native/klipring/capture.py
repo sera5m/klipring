@@ -103,6 +103,21 @@ def _wl_paste(args: list[str]) -> str:
     return r.stdout.decode("utf-8", "replace")
 
 
+def item_from_paths(paths: list[str]) -> ClipboardItem | None:
+    urls: list[QUrl] = []
+    for raw in paths:
+        path = Path(raw).expanduser()
+        try:
+            path = path.resolve()
+        except OSError:
+            continue
+        if path.exists():
+            urls.append(QUrl.fromLocalFile(str(path)))
+    if not urls:
+        return None
+    return _from_urls(urls)
+
+
 def _from_urls(urls: list[QUrl]) -> ClipboardItem:
     uris = [u.toString() for u in urls]
     locals_ = [Path(u.toLocalFile()) for u in urls if u.toLocalFile()]

@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Service
+MimeType=all/all;
+Actions=Show;CopyToRing;PasteHere
+X-KDE-Priority=TopLevel
+X-KDE-Submenu=KlipRing
+Icon=klipring
+Name=KlipRing
+Comment=Radial clipboard pie
+
+[Desktop Action Show]
+Name=Open clipboard wheel
+Icon=klipring
+Exec=klipring --show
+
+[Desktop Action CopyToRing]
+Name=Copy to KlipRing
+Icon=edit-copy
+Exec=klipring --copy %F
+
+[Desktop Action PasteHere]
+Name=Paste last clip here
+Icon=edit-paste
+Exec=klipring --paste-here %f

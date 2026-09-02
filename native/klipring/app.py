@@ -5,7 +5,7 @@ import signal
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QStandardPaths, Qt, QTimer, Slot
+from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QStandardPaths, Qt, QTimer, QUrl, Slot
 from PySide6.QtDBus import QDBusConnection, QDBusMessage
 from PySide6.QtGui import QAction, QCursor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
-from .capture import snapshot
+from .capture import item_from_paths, snapshot
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
@@ -57,6 +57,15 @@ class Bridge(QObject):
             self._app.overlay.dismiss(False)
         else:
             self._app.show_overlay()
+
+    @Slot(str)
+    def CopyPaths(self, blob: str) -> None:
+        paths = [p for p in blob.split("\n") if p.strip()]
+        self._app.ingest_paths(paths)
+
+    @Slot(str)
+    def PasteHere(self, dest: str) -> None:
+        self._app.paste_here(dest)
 
 
 class KeyFilter(QObject):
@@ -158,6 +167,42 @@ class KlipRingApp:
                 "Clipboard set — not injected",
                 f"{how}\nPress Shift+Insert or Ctrl+Shift+V in the app.",
             )
+
+    def ingest_paths(self, paths: list[str]) -> None:
+        item = item_from_paths(paths)
+        if item is None:
+            return
+        self.buffer.push_item(item)
+        set_clipboard_item(item)
+        self._refresh_tray()
+        self._notify("Copied to KlipRing", item.text[:120])
+
+    def paste_here(self, dest: str) -> None:
+        dest_p = Path(dest).expanduser()
+        if dest_p.is_file():
+            dest_p = dest_p.parent
+        if not dest_p.is_dir() or not self.buffer.items:
+            return
+        item = self.buffer.items[0]
+        if not item.uris:
+            set_clipboard_item(item)
+            self._notify("Clipboard set", "Text clip — paste in an editor (Shift+Insert)")
+            return
+        n = 0
+        for uri in item.uris:
+            src = Path(QUrl(uri).toLocalFile())
+            if not src.exists():
+                continue
+            target = dest_p / src.name
+            try:
+                if src.is_dir():
+                    shutil.copytree(src, target, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src, target)
+                n += 1
+            except OSError:
+                continue
+        self._notify("Pasted", f"{n} item(s) → {dest_p}")
 
     def drop_index(self, index: int) -> int:
         nxt = self.buffer.remove_at(index)
@@ -310,7 +355,7 @@ class KlipRingApp:
         self._notify("Shortcut", f"{chord} registered in KWin. Check System Settings → Shortcuts → KlipRing.")
 
 
-def _already_running_show() -> bool:
+def _dbus_call(method: str, *args: object) -> bool:
     bus = QDBusConnection.sessionBus()
     if not bus.isConnected():
         return False
@@ -322,32 +367,48 @@ def _already_running_show() -> bool:
         return False
     if registered is False:
         return False
-    token = os.environ.get("XDG_ACTIVATION_TOKEN", "")
-    if token:
-        msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", "ShowActivated")
-        msg.setArguments([token])
-    else:
-        msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", "Show")
+    msg = QDBusMessage.createMethodCall(APP_ID, "/App", "", method)
+    if args:
+        msg.setArguments(list(args))
     bus.call(msg)
     return True
+
+
+def _already_running_show() -> bool:
+    token = os.environ.get("XDG_ACTIVATION_TOKEN", "")
+    if token:
+        return _dbus_call("ShowActivated", token)
+    return _dbus_call("Show")
 
 
 def run(argv: list[str]) -> int:
     QApplication.setApplicationName(APP_NAME)
     QApplication.setOrganizationName("klipring")
     QApplication.setDesktopFileName("klipring")
-    qapp = QApplication(argv)
+    qapp = QApplication([argv[0]])
     qapp.setQuitOnLastWindowClosed(False)
     qapp.setApplicationVersion(__version__)
 
     show_only = "--show" in argv
     bind_only = "--bind-shortcut" in argv
+    copy_paths: list[str] = []
+    if "--copy" in argv:
+        copy_paths = [a for a in argv[argv.index("--copy") + 1 :] if not a.startswith("-")]
+    paste_dest = ""
+    if "--paste-here" in argv:
+        rest = argv[argv.index("--paste-here") + 1 :]
+        paste_dest = rest[0] if rest else ""
+
     if bind_only:
         chord = bind_shortcut(DEFAULT_CHORD)
         print(f"Registered {chord} via KGlobalAccel (no sudo).")
         print("System Settings → Keyboard → Shortcuts → KlipRing if it does not fire yet.")
         return 0
     if show_only and _already_running_show():
+        return 0
+    if copy_paths and _dbus_call("CopyPaths", "\n".join(copy_paths)):
+        return 0
+    if paste_dest and _dbus_call("PasteHere", paste_dest):
         return 0
 
     taken = False
@@ -379,9 +440,13 @@ def run(argv: list[str]) -> int:
     beat.timeout.connect(lambda: None)
     beat.start()
 
+    if copy_paths:
+        QTimer.singleShot(0, lambda: host.ingest_paths(copy_paths))
+    if paste_dest:
+        QTimer.singleShot(0, lambda: host.paste_here(paste_dest))
     if show_only:
         QTimer.singleShot(50, host.show_overlay)
-    else:
+    elif not copy_paths and not paste_dest:
         host._notify(APP_NAME, "In the tray. Bind Ctrl+V via the tray menu or: klipring --bind-shortcut")
     try:
         return qapp.exec()
