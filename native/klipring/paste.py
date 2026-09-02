@@ -62,15 +62,17 @@ def _local_or_uri(uri: str) -> str:
 
 
 def send_paste(terminal: bool = False) -> tuple[bool, str]:
-    """Inject paste. Returns (ok, how). Terminals want Ctrl+Shift+V."""
+    """Inject paste without asking KWin who is focused."""
     _block_global_shortcuts(True)
     try:
-        order = (
-            (_ydotool_ctrl_shift_v, _ydotool_shift_insert, _dotool_paste, _wtype_paste, _xdotool_paste)
-            if terminal
-            else (_ydotool_shift_insert, _ydotool_ctrl_v, _dotool_paste, _wtype_paste, _xdotool_paste)
-        )
-        for fn in order:
+        for fn in (
+            _ydotool_shift_insert,
+            _ydotool_ctrl_shift_v,
+            _ydotool_ctrl_v,
+            _dotool_paste,
+            _wtype_paste,
+            _xdotool_paste,
+        ):
             ok, how = fn()
             if ok:
                 return True, how

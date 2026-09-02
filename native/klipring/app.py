@@ -19,15 +19,6 @@ from PySide6.QtWidgets import (
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
 from .capture import snapshot
-from .focus import (
-    activate_window,
-    active_window_id,
-    focused_window,
-    is_self,
-    is_terminal,
-    looks_exclusive,
-    restore_pointer,
-)
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
@@ -104,10 +95,7 @@ class KlipRingApp:
         self._last_ptr = QPoint(-1, -1)
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
-        self._target_win = "unknown window"
-        self._target_id = ""
         self._saved_ptr = QPoint(0, 0)
-        self._opening = False
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         try:
@@ -138,40 +126,14 @@ class KlipRingApp:
         bus.registerService(APP_ID)
 
     def pointer_target(self) -> QPoint:
-        pos = QCursor.pos()
-        if pos.x() == 0 and pos.y() == 0 and self._last_ptr.x() >= 0:
-            return QPoint(self._last_ptr)
-        if not (pos.x() == 0 and pos.y() == 0):
-            self._last_ptr = QPoint(pos)
-        return pos
+        return QCursor.pos()
 
     def show_overlay(self) -> None:
-        if self.overlay.isVisible() or self._opening:
-            return
-        ptr = self.pointer_target()
-        name = focused_window()
-        wid = active_window_id()
-        if looks_exclusive(name, wid):
-            return
-        if is_self(name, wid):
-            self._opening = True
-            QTimer.singleShot(50, lambda: self._open_after_ctrl(ptr))
-            return
-        self._commit_open(name, wid, ptr)
-
-    def _open_after_ctrl(self, ptr: QPoint) -> None:
-        self._opening = False
         if self.overlay.isVisible():
             return
-        name = focused_window()
-        wid = active_window_id()
-        if is_self(name, wid) or looks_exclusive(name, wid):
+        ptr = QCursor.pos()
+        if ptr.x() == 0 and ptr.y() == 0:
             return
-        self._commit_open(name, wid, ptr)
-
-    def _commit_open(self, name: str, wid: str, ptr: QPoint) -> None:
-        self._target_win = name
-        self._target_id = wid
         self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
         self.overlay.popup(ptr)
@@ -183,40 +145,18 @@ class KlipRingApp:
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        self._restore_target()
-        QTimer.singleShot(80, lambda: self._finish_paste(0))
+        QTimer.singleShot(80, self._finish_paste)
 
-    def _restore_target(self) -> None:
-        restore_pointer(self._saved_ptr)
-        if self._target_id and not is_self(self._target_id):
-            activate_window(self._target_id)
-
-    def _finish_paste(self, tries: int = 0) -> None:
-        now = focused_window()
-        if is_self(now) or is_self("", active_window_id()):
-            self._restore_target()
-            if tries < 10:
-                QTimer.singleShot(60, lambda: self._finish_paste(tries + 1))
-                return
-            self.buffer.mute(False)
-            QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
-            self._notify(
-                "Not pasted",
-                f"Refused to paste into KlipRing.\nPrior target: {self._target_win or 'lost'}",
-            )
-            return
-        target = self._target_win if not is_self(self._target_win) else now
-        term = is_terminal(target)
-        ok, how = send_paste(terminal=term)
+    def _finish_paste(self) -> None:
+        ok, how = send_paste()
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
-        hint = "Ctrl+Shift+V" if term else "Shift+Insert"
         if ok:
-            self._notify("Pasted", f"Pasted in {target}\nvia {how}")
+            self._notify("Pasted", f"via {how}")
         else:
             self._notify(
                 "Clipboard set — not injected",
-                f"Would paste in {target}\n{how}\nPress {hint} there.",
+                f"{how}\nPress Shift+Insert or Ctrl+Shift+V in the app.",
             )
 
     def drop_index(self, index: int) -> int:
