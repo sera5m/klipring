@@ -2,7 +2,7 @@
 Type=Application
 Name=KlipRing
 GenericName=Radial clipboard
-Comment=Hold Ctrl+V for a radial clipboard pie on KDE Plasma
+Comment=Radial clipboard pie for KDE Plasma (KWin shortcut, default Ctrl+V)
 Exec=klipring
 Icon=klipring
 Terminal=false

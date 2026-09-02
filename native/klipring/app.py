@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import signal
 import shutil
-import sys
-import time
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QStandardPaths, Qt, QTimer, Slot
@@ -24,6 +22,7 @@ from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_ctrl_v, set_clipboard_item
 from .pointer import looks_captured, screen_center
+from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
 
 def data_dir() -> Path:
@@ -262,6 +261,9 @@ class KlipRingApp:
             act = QAction(f"Capacity {cap}", menu)
             act.triggered.connect(lambda _=False, c=cap: self._set_cap(c))
             menu.addAction(act)
+        bind = QAction(f"Bind {DEFAULT_CHORD} in KWin", menu)
+        bind.triggered.connect(self._bind_shortcut)
+        menu.addAction(bind)
         menu.addSeparator()
         quit_act = QAction("Quit", menu)
         quit_act.triggered.connect(QApplication.instance().quit)
@@ -295,40 +297,12 @@ class KlipRingApp:
         marker = data_dir() / "shortcut-registered"
         if marker.exists():
             return
-        try:
-            from subprocess import run
+        chord = bind_shortcut(DEFAULT_CHORD)
+        marker.write_text(chord, encoding="utf-8")
 
-            run(
-                [
-                    "kwriteconfig6",
-                    "--file",
-                    "kglobalshortcutsrc",
-                    "--group",
-                    "klipring-show.desktop",
-                    "--key",
-                    "_k_friendly_name",
-                    "KlipRing",
-                ],
-                check=False,
-                timeout=2,
-            )
-            run(
-                [
-                    "kwriteconfig6",
-                    "--file",
-                    "kglobalshortcutsrc",
-                    "--group",
-                    "klipring-show.desktop",
-                    "--key",
-                    "_launch",
-                    "Ctrl+V,none,Show KlipRing",
-                ],
-                check=False,
-                timeout=2,
-            )
-            marker.write_text(str(time.time()), encoding="utf-8")
-        except OSError:
-            return
+    def _bind_shortcut(self) -> None:
+        chord = bind_shortcut(DEFAULT_CHORD)
+        self._notify("Shortcut", f"{chord} registered in KWin. Check System Settings → Shortcuts → KlipRing.")
 
 
 def _already_running_show() -> bool:
@@ -357,6 +331,12 @@ def run(argv: list[str]) -> int:
     qapp.setApplicationVersion(__version__)
 
     show_only = "--show" in argv
+    bind_only = "--bind-shortcut" in argv
+    if bind_only:
+        chord = bind_shortcut(DEFAULT_CHORD)
+        print(f"Registered {chord} via KGlobalAccel (no sudo).")
+        print("System Settings → Keyboard → Shortcuts → KlipRing if it does not fire yet.")
+        return 0
     if show_only and _already_running_show():
         return 0
 
@@ -392,7 +372,7 @@ def run(argv: list[str]) -> int:
     if show_only:
         QTimer.singleShot(50, host.show_overlay)
     else:
-        host._notify(APP_NAME, "Clipboard ring is in the tray. Hold Ctrl+V after binding the shortcut.")
+        host._notify(APP_NAME, "In the tray. Bind Ctrl+V via the tray menu or: klipring --bind-shortcut")
     try:
         return qapp.exec()
     except KeyboardInterrupt:

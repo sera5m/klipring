@@ -82,7 +82,6 @@ class Overlay(QWidget):
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self.update)
         self._icons: dict[str, QIcon] = {}
-        self._kbd = False
 
     def popup(self, pos: QPoint | None = None) -> None:
         raw = pos if pos is not None else QCursor.pos()
@@ -107,9 +106,7 @@ class Overlay(QWidget):
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-        self._arm_input()
-        QTimer.singleShot(30, self._arm_input)
-        QTimer.singleShot(90, self._arm_input)
+        QTimer.singleShot(40, self._arm_input)
         self.update()
 
     def _arm_input(self) -> None:
@@ -118,26 +115,8 @@ class Overlay(QWidget):
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-        self.grabKeyboard()
-        self.grabMouse()
-        handle = self.windowHandle()
-        if handle is not None:
-            self._kbd = bool(handle.setKeyboardGrabEnabled(True))
-            handle.setMouseGrabEnabled(True)
 
     def dismiss(self, paste: bool = False) -> None:
-        try:
-            self.releaseKeyboard()
-        except RuntimeError:
-            pass
-        try:
-            self.releaseMouse()
-        except RuntimeError:
-            pass
-        handle = self.windowHandle()
-        if handle is not None:
-            handle.setKeyboardGrabEnabled(False)
-            handle.setMouseGrabEnabled(False)
         self._tick.stop()
         self.hide()
         if paste and self.buffer.items:
@@ -312,7 +291,7 @@ class Overlay(QWidget):
         p.drawText(
             QRectF(ox - 60, oy - 22, 120, 44),
             Qt.AlignmentFlag.AlignCenter,
-            f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
+            f"{label}\nclick or Enter to paste" if n else "empty — copy text or a file",
         )
         self._draw_target_arrow(p, ox, oy)
         p.end()
@@ -396,7 +375,7 @@ class Overlay(QWidget):
                 self.dismiss(False)
             else:
                 self.selected = hit
-                self.update()
+                self.dismiss(True)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         n = len(self.buffer.items)

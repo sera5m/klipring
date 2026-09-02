@@ -1,11 +1,14 @@
 post_install() {
   echo ""
   echo "==> KlipRing"
-  echo "    Start it:           klipring"
-  echo "    (or log out/in — autostart is installed)"
-  echo "    Paste helper:       sudo pacman -S wtype"
-  echo "    Bind the chord:     System Settings → Keyboard → Shortcuts → KlipRing → Ctrl+V"
-  echo "    If an app still eats Ctrl+V, assign the shortcut there once."
+  echo "    Start it:        klipring   (or log out — autostart is installed)"
+  echo "    Do not run it in a terminal: Ctrl+C in that TTY is SIGINT, not copy."
+  echo "    Paste helper:    sudo pacman -S wtype"
+  echo "    Bind the chord:  klipring --bind-shortcut"
+  echo "                     (writes ~/.config/kglobalshortcutsrc — no sudo)"
+  echo "    Then confirm:    System Settings → Keyboard → Shortcuts → KlipRing"
+  echo "    Default chord is Ctrl+V at the KWin layer. Ctrl+C is never stolen;"
+  echo "    copies are watched from the clipboard like Klipper."
   echo ""
 }
 
@@ -16,4 +19,5 @@ post_upgrade() {
 post_remove() {
   echo "==> KlipRing removed. Delete leftover state with:"
   echo "    rm -rf ~/.local/share/klipring ~/.config/klipring"
+  echo "    rm -f ~/.local/share/applications/klipring-show.desktop"
 }

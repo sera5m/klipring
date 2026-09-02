@@ -2,7 +2,9 @@
 
 Radial clipboard pie for **KDE Plasma 6** on Arch / EndeavourOS.
 
-Hold **Ctrl+V**. A hollow purple ring opens on the cursor. Hover a slice, release **V**, it pastes **once** into the focused window.
+Hold **Ctrl+V** (a KWin global shortcut, not a mouse grab). A hollow purple ring opens on the cursor. Hover a slice, click it or press Enter — it pastes **once** into the focused window.
+
+**Ctrl+C is never stolen.** Copies are watched from the system clipboard the same way Klipper does. If you run `klipring` in a terminal, Ctrl+C is SIGINT — use the tray/autostart instead.
 
 Copies of **text, files, and folders** are watched (not only Qt text). Each slice gets a type icon (document / file / folder). The pie layout is unchanged.
 
@@ -27,16 +29,19 @@ klipring
 
 A tray icon appears. Log out/in and it autostarts.
 
-### Bind Ctrl+V
+### Bind Ctrl+V (KWin, no sudo)
 
-Wayland will not let a random app steal Ctrl+V. KWin has to hand it over:
+EndeavourOS/Plasma binds chords through **KGlobalAccel**, not by grabbing the pointer.
 
-1. **System Settings → Keyboard → Shortcuts**
-2. Find **KlipRing** / “Show KlipRing”
-3. Set it to **Ctrl+V**
-4. First launch also tries `kwriteconfig6` for you — if Plasma rejects it, set it by hand
+```bash
+klipring --bind-shortcut
+```
 
-Install `wtype` so release-V can inject Ctrl+V into the window you were in:
+That writes `~/.local/share/applications/klipring-show.desktop` and `~/.config/kglobalshortcutsrc`, then runs `kbuildsycoca6`. Confirm under **System Settings → Keyboard → Shortcuts → KlipRing**.
+
+Ctrl+V at that layer *replaces* in-app paste (that's the point of the wheel). Leave it as Meta+Shift+V in those settings if you want normal Ctrl+V paste kept.
+
+Install `wtype` so selecting a slice can inject Ctrl+V into the window you were in:
 
 ```bash
 sudo pacman -S wtype
@@ -64,10 +69,11 @@ Until that push, install from the GitHub clone with `makepkg -si` as above.
 
 | Input | Action |
 |---|---|
-| Hold Ctrl+V | Open pie on cursor |
+| Ctrl+V (KWin shortcut) | Open pie on cursor |
 | Hover a wedge | Select that clip |
+| Click a wedge / Enter | Paste once |
 | Scroll / arrows / 1–9 / 0 | Walk slots |
-| Release V / Enter | Paste once |
+| Release V (if the overlay has focus) | Paste once |
 | Delete | Drop slot |
 | Middle-click | Open in Kate |
 | S | Save as .txt |
