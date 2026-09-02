@@ -65,7 +65,9 @@ class KlipRingApp:
         self._mute_clip = False
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
+        self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
+        self._refresh_tray()
         self._register_dbus()
         self._maybe_register_shortcut()
 
@@ -131,7 +133,10 @@ class KlipRingApp:
             self._refresh_tray()
 
     def _make_tray(self) -> QSystemTrayIcon:
-        icon = QIcon.fromTheme("edit-paste", QIcon.fromTheme("klipring"))
+        icon_path = Path("/usr/share/icons/hicolor/scalable/apps/klipring.svg")
+        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon.fromTheme("edit-paste")
+        if icon.isNull():
+            icon = QIcon.fromTheme("klipper")
         tray = QSystemTrayIcon(icon)
         tray.setToolTip(APP_NAME)
         menu = QMenu()
@@ -149,7 +154,6 @@ class KlipRingApp:
         tray.setContextMenu(menu)
         tray.activated.connect(self._tray_click)
         tray.show()
-        self._refresh_tray()
         return tray
 
     def _tray_click(self, reason: QSystemTrayIcon.ActivationReason) -> None:
@@ -162,10 +166,14 @@ class KlipRingApp:
         self._refresh_tray()
 
     def _refresh_tray(self) -> None:
+        if self.tray is None:
+            return
         n = len(self.buffer.items)
         self.tray.setToolTip(f"{APP_NAME} — {n}/{self.buffer.capacity}")
 
     def _notify(self, title: str, body: str) -> None:
+        if self.tray is None:
+            return
         self.tray.showMessage(title, body, QSystemTrayIcon.MessageIcon.Information, 2200)
 
     def _maybe_register_shortcut(self) -> None:

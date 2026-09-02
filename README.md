@@ -9,7 +9,7 @@ This is the native daemon (`native/`). The web UI in `src/` is a browser prototy
 ## Install on EndeavourOS / Arch
 
 ```bash
-sudo pacman -S --needed git python-pyside6 qt6-wayland wtype
+sudo pacman -S --needed git pyside6 qt6-wayland wtype
 git clone https://github.com/sera5m/klipring.git
 cd klipring/native
 makepkg -si

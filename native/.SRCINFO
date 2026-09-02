@@ -1,6 +1,6 @@
 pkgbase = klipring
 	pkgdesc = Radial Ctrl+V clipboard pie for KDE Plasma
-	pkgver = 0.1.0
+	pkgver = 0.1.1
 	pkgrel = 1
 	url = https://github.com/sera5m/klipring
 	install = klipring.install
@@ -8,7 +8,7 @@ pkgbase = klipring
 	license = MIT
 	makedepends = git
 	depends = python
-	depends = python-pyside6
+	depends = pyside6
 	depends = qt6-base
 	depends = qt6-wayland
 	optdepends = wtype: paste into the focused window on Wayland (recommended)
