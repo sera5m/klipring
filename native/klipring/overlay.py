@@ -55,13 +55,22 @@ class Overlay(QWidget):
         on_open: Callable[[int], None],
         on_save: Callable[[int], None],
     ) -> None:
-        super().__init__(
-            None,
-            Qt.WindowType.FramelessWindowHint
+        anchor = QWidget()
+        anchor.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
+        )
+        anchor.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        anchor.resize(1, 1)
+        super().__init__(
+            anchor,
+            Qt.WindowType.Popup
+            | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.NoDropShadowWindowHint,
         )
+        self._anchor = anchor
         self.buffer = buffer
         self.on_paste = on_paste
         self.on_drop = on_drop
@@ -82,8 +91,12 @@ class Overlay(QWidget):
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self.update)
         self._icons: dict[str, QIcon] = {}
+        self._done = False
+        self._armed_at = 0.0
 
     def popup(self, pos: QPoint | None = None) -> None:
+        if self.isVisible():
+            return
         raw = pos if pos is not None else QCursor.pos()
         screen = QGuiApplication.screenAt(raw) or QGuiApplication.primaryScreen()
         geo = screen.availableGeometry()
@@ -91,34 +104,52 @@ class Overlay(QWidget):
             geo = screen.geometry()
             if not geo.contains(raw):
                 raw = geo.center()
-        self.setGeometry(geo)
+        self._fit_to(geo.width(), geo.height())
+        radius = self._max_radius()
+        pad = 96
+        ox, oy = clamp_origin(
+            raw.x(), raw.y(), geo.left(), geo.top(), geo.right(), geo.bottom(), radius, pad=pad
+        )
+        side = int(2 * (radius + pad) + 8)
+        self._anchor.setGeometry(int(raw.x()), int(raw.y()), 1, 1)
+        self._anchor.show()
         self.target = raw
+        self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
         self.v_down = True
-        self._fit()
-        radius = self._max_radius()
-        ox, oy = clamp_origin(
-            raw.x(), raw.y(), geo.left(), geo.top(), geo.right(), geo.bottom(), radius, pad=96
-        )
-        self.origin = QPoint(int(ox), int(oy))
+        self._done = False
+        self._armed_at = time.monotonic()
+        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
         self._tick.start()
         self.show()
         self.raise_()
-        self.activateWindow()
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-        QTimer.singleShot(40, self._arm_input)
+        self.setFocus(Qt.FocusReason.PopupFocusReason)
+        QTimer.singleShot(16, self._arm_input)
         self.update()
 
     def _arm_input(self) -> None:
         if not self.isVisible():
             return
         self.raise_()
-        self.activateWindow()
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        self.setFocus(Qt.FocusReason.PopupFocusReason)
+        self.grabKeyboard()
+        self.grabMouse()
 
     def dismiss(self, paste: bool = False) -> None:
+        if self._done:
+            return
+        self._done = True
         self._tick.stop()
+        try:
+            self.releaseMouse()
+        except RuntimeError:
+            pass
+        try:
+            self.releaseKeyboard()
+        except RuntimeError:
+            pass
         self.hide()
+        self._anchor.hide()
         if paste and self.buffer.items:
             idx = max(0, min(self.selected, len(self.buffer.items) - 1))
             self.on_paste(idx)
@@ -129,14 +160,14 @@ class Overlay(QWidget):
         return self.inner + self.thick + (rings - 1) * (self.thick + self.gap)
 
     def _fit(self) -> None:
-        max_r = self._max_radius() if self.inner else 124.0 + 140.0
-        # reset then scale against this screen
+        self._fit_to(self.width() or 800, self.height() or 800)
+
+    def _fit_to(self, width: float, height: float) -> None:
         self.inner = 124.0
         self.thick = 140.0
         self.gap = 36.0
         max_r = self._max_radius()
-        screen = self.geometry()
-        budget = min(screen.width(), screen.height()) / 2 - 28
+        budget = min(width, height) / 2 - 28
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
@@ -200,9 +231,6 @@ class Overlay(QWidget):
         rings = ring_count_for(max(1, n))
         selected = min(self.selected, n - 1) if n else 0
 
-        dim = QColor(10, 8, 16, 70)
-        p.fillRect(self.rect(), dim)
-
         for r in range(rings):
             outer = self.inner + self.thick + r * (self.thick + self.gap)
             inner_r = outer - self.thick
@@ -230,10 +258,14 @@ class Overlay(QWidget):
                 a1 = a0 + step - pad * 2
                 slice_path = _annular(ox, oy, inner_r + 2, outer - 2, a0, a1)
                 if active:
-                    fill = QColor(PLASMA)
-                    fill.setAlpha(120)
+                    fill = QColor("#6fd4f6")
+                    fill.setAlpha(220)
                     p.fillPath(slice_path, fill)
-                    p.setPen(QPen(PLASMA, 2.4))
+                    edge = QPen(QColor("#f2fdff"), 4.6)
+                    edge.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                    p.setPen(edge)
+                    p.drawPath(slice_path)
+                    p.setPen(QPen(QColor("#3daee9"), 2.0))
                 elif occupied:
                     fill = QColor(RING)
                     fill.setAlpha(50)
@@ -268,8 +300,8 @@ class Overlay(QWidget):
             active = i == selected
             w, h = (196, 78) if active else (132, 52)
             card = QRectF(x - w / 2, y - h / 2, w, h)
-            p.setPen(QPen(PLASMA if active else QColor(155, 109, 255, 140), 1.5))
-            p.setBrush(CARD if not active else QColor(40, 32, 64, 230))
+            p.setPen(QPen(QColor("#f2fdff") if active else QColor(155, 109, 255, 140), 3.0 if active else 1.5))
+            p.setBrush(QColor(88, 58, 140, 245) if active else CARD)
             p.drawRoundedRect(card, 8, 8)
             age = format_age(now - item.copied_at)
             badge = badge_for_index(i)
@@ -291,7 +323,7 @@ class Overlay(QWidget):
         p.drawText(
             QRectF(ox - 60, oy - 22, 120, 44),
             Qt.AlignmentFlag.AlignCenter,
-            f"{label}\nclick or Enter to paste" if n else "empty — copy text or a file",
+            f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
         )
         self._draw_target_arrow(p, ox, oy)
         p.end()
@@ -336,6 +368,8 @@ class Overlay(QWidget):
         if event.isAutoRepeat():
             return
         if event.key() == Qt.Key.Key_V:
+            if time.monotonic() - self._armed_at < 0.07:
+                return
             self.v_down = False
             self.dismiss(True)
             return

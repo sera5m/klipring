@@ -145,6 +145,8 @@ class KlipRingApp:
         return pos
 
     def show_overlay(self) -> None:
+        if self.overlay.isVisible():
+            return
         self._ingest_clipboard(force=True)
         self.overlay.popup(self.pointer_target())
 
