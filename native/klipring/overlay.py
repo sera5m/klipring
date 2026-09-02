@@ -4,7 +4,7 @@ import math
 import time
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -72,9 +72,10 @@ class Overlay(QWidget):
         self.setWindowTitle("KlipRing")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.origin = QPoint(0, 0)
         self.target = QPoint(0, 0)
         self.selected = 0
@@ -88,6 +89,10 @@ class Overlay(QWidget):
         self._chord = QTimer(self)
         self._chord.setInterval(16)
         self._chord.timeout.connect(self._poll_chord)
+        self._life = QTimer(self)
+        self._life.setSingleShot(True)
+        self._life.setInterval(8000)
+        self._life.timeout.connect(lambda: self.dismiss(False))
         self._icons: dict[str, QIcon] = {}
         self._done = False
         self._armed_at = 0.0
@@ -111,6 +116,7 @@ class Overlay(QWidget):
         ox, oy = clamp_origin(
             raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
         )
+        side = int(2 * (radius + PAD) + 8)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
@@ -119,20 +125,52 @@ class Overlay(QWidget):
         self._saw_ctrl = False
         self._armed_at = time.monotonic()
         self.clearMask()
-        self.setGeometry(full)
+        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
         self._tick.start()
         self._chord.start()
+        self._life.start()
         self.show()
         self.raise_()
-        self.activateWindow()
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
         self.update()
 
-    def _apply_input_mask(self) -> None:
-        self.clearMask()
+    def _release_seat(self) -> None:
+        self._tick.stop()
+        self._chord.stop()
+        self._life.stop()
+        try:
+            self.releaseMouse()
+        except RuntimeError:
+            pass
+        try:
+            self.releaseKeyboard()
+        except RuntimeError:
+            pass
+
+    def dismiss(self, paste: bool = False) -> None:
+        already = self._done
+        self._done = True
+        self._release_seat()
+        self.hide()
+        if paste and not already and self.buffer.items:
+            idx = max(0, min(self.selected, len(self.buffer.items) - 1))
+            self.on_paste(idx)
+
+    def hideEvent(self, event) -> None:
+        self._release_seat()
+        super().hideEvent(event)
+
+    def closeEvent(self, event) -> None:
+        self._release_seat()
+        event.accept()
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowDeactivate:
+            if self.isVisible() and time.monotonic() - self._armed_at > 0.25:
+                self.dismiss(False)
 
     def _poll_chord(self) -> None:
-        if self._done or not self.isVisible():
+        if not self.isVisible():
             return
         mods = QGuiApplication.queryKeyboardModifiers()
         ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
@@ -141,17 +179,6 @@ class Overlay(QWidget):
             return
         if self._saw_ctrl and time.monotonic() - self._armed_at > 0.08:
             self.dismiss(True)
-
-    def dismiss(self, paste: bool = False) -> None:
-        if self._done:
-            return
-        self._done = True
-        self._tick.stop()
-        self._chord.stop()
-        self.hide()
-        if paste and self.buffer.items:
-            idx = max(0, min(self.selected, len(self.buffer.items) - 1))
-            self.on_paste(idx)
 
     def _max_radius(self) -> float:
         n = max(1, len(self.buffer.items))
@@ -338,6 +365,9 @@ class Overlay(QWidget):
         items = self.buffer.items
         n = len(items)
         if key in (Qt.Key.Key_Escape,):
+            self.dismiss(False)
+            return
+        if key == Qt.Key.Key_F4 and event.modifiers() & Qt.KeyboardModifier.AltModifier:
             self.dismiss(False)
             return
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

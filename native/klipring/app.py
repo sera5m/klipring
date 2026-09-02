@@ -108,6 +108,7 @@ class KlipRingApp:
         self._target_win = "unknown window"
         self._target_id = ""
         self._saved_ptr = QPoint(0, 0)
+        self._opening = False
         self._ptr = QTimer()
         self._ptr.setInterval(150)
         self._ptr.timeout.connect(self._track_idle)
@@ -181,15 +182,26 @@ class KlipRingApp:
         return pos
 
     def show_overlay(self) -> None:
+        if self.overlay.isVisible() or self._opening:
+            return
+        self._opening = True
+        self._track_idle()
+        snap_name = self._target_win
+        snap_id = self._target_id
+        snap_ptr = QPoint(self.pointer_target())
+        QTimer.singleShot(50, lambda: self._open_confirmed(snap_name, snap_id, snap_ptr))
+
+    def _open_confirmed(self, name: str, wid: str, ptr: QPoint) -> None:
+        self._opening = False
         if self.overlay.isVisible():
             return
-        self._track_idle()
-        self._saved_ptr = QPoint(self.pointer_target())
-        if is_self(self._target_win, self._target_id):
-            self._target_win = focused_window()
-            self._target_id = active_window_id()
-            if is_self(self._target_win, self._target_id):
-                self._target_id = ""
+        now_name = focused_window()
+        now_id = active_window_id()
+        if name and not is_self(name, wid):
+            self._target_win, self._target_id = name, wid
+        elif now_name and not is_self(now_name, now_id):
+            self._target_win, self._target_id = now_name, now_id
+        self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
         self.overlay.popup(self._saved_ptr)
 
