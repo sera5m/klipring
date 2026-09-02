@@ -91,7 +91,7 @@ class Overlay(QWidget):
         self._chord.timeout.connect(self._poll_chord)
         self._life = QTimer(self)
         self._life.setSingleShot(True)
-        self._life.setInterval(8000)
+        self._life.setInterval(45_000)
         self._life.timeout.connect(lambda: self.dismiss(False))
         self._icons: dict[str, QIcon] = {}
         self._done = False
