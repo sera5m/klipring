@@ -114,25 +114,44 @@ class Overlay(QWidget):
         box = work if work.width() > 64 and work.height() > 64 else full
         self._fit_to(box.width(), box.height())
         radius = self._max_radius()
-        ox, oy = clamp_origin(
-            raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
-        )
-        side = int(2 * (radius + PAD) + 8)
-        self.target = raw
-        self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
         self.v_down = True
         self._done = False
         self._saw_ctrl = False
         self._armed_at = time.monotonic()
         self.clearMask()
-        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
-        self._apply_pass_through_mask()
+        self._place(raw, box, radius)
         self._tick.start()
         self._chord.start()
         self._life.start()
         self.show()
         self.raise_()
+        self.update()
+        QTimer.singleShot(0, lambda: self._reanchor(box, radius))
+
+    def _place(self, raw: QPoint, box, radius: float) -> None:
+        ox, oy = clamp_origin(
+            raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
+        )
+        side = int(2 * (radius + PAD) + 8)
+        self.target = raw
+        self.origin = QPoint(int(ox), int(oy))
+        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
+        self._apply_pass_through_mask()
+
+    def _reanchor(self, box, radius: float) -> None:
+        """One event-loop tick after map: Qt may now know the real cursor."""
+        if not self.isVisible():
+            return
+        pos = QCursor.pos()
+        if pos.x() == 0 and pos.y() == 0:
+            return
+        screen = QGuiApplication.screenAt(pos)
+        if screen is not None:
+            work = screen.availableGeometry()
+            if work.width() > 64 and work.height() > 64:
+                box = work
+        self._place(pos, box, radius)
         self.update()
 
     def _apply_pass_through_mask(self) -> None:

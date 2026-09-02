@@ -1,4 +1,4 @@
-"""Pointer target + on-screen clamp. Shift only the overflowing axis."""
+"""Snap the wheel to the mouse; nudge only by how much the disk would clip."""
 
 from __future__ import annotations
 
@@ -15,15 +15,22 @@ def looks_captured(x: int, y: int, last_x: int, last_y: int) -> bool:
     return False
 
 
-def clamp_axis(value: float, low: float, high: float) -> float:
-    """Keep value if it fits; otherwise the nearest in-range point. Never jump to mid."""
-    if low > high:
+def shift_for_extent(mouse: float, low: float, high: float, radius: float) -> float:
+    """Move mouse along one axis so [mouse-radius, mouse+radius] stays in [low, high].
+
+    shift = radius - remaining_pixels on a short edge (0 if there is room).
+    If both edges are short (disk wider than the screen), the two shifts
+    cancel toward the mid-point — still the minimum total clip.
+    """
+    remain_before = mouse - low
+    remain_after = high - mouse
+    if remain_before >= radius and remain_after >= radius:
+        return mouse
+    if (high - low) < 2 * radius:
         return (low + high) / 2
-    if value < low:
-        return low
-    if value > high:
-        return high
-    return value
+    if remain_before < radius:
+        return mouse + (radius - remain_before)
+    return mouse - (radius - remain_after)
 
 
 def clamp_origin(
@@ -36,10 +43,10 @@ def clamp_origin(
     radius: float,
     pad: float = 18,
 ) -> tuple[float, float]:
-    r = radius + pad
+    extent = radius + pad
     return (
-        clamp_axis(x, left + r, right - r),
-        clamp_axis(y, top + r, bottom - r),
+        shift_for_extent(x, left, right, extent),
+        shift_for_extent(y, top, bottom, extent),
     )
 
 

@@ -1,6 +1,6 @@
 pkgbase = klipring
 	pkgdesc = Radial Ctrl+V clipboard pie for KDE Plasma
-	pkgver = 0.1.15
+	pkgver = 0.1.16
 	pkgrel = 1
 	url = https://github.com/sera5m/klipring
 	install = klipring.install
