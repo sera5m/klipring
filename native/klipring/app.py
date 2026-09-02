@@ -25,13 +25,12 @@ from .focus import (
     focused_window,
     is_self,
     is_terminal,
-    mouse_location,
+    looks_exclusive,
     restore_pointer,
 )
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
-from .pointer import looks_captured, screen_center
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
 
@@ -109,9 +108,6 @@ class KlipRingApp:
         self._target_id = ""
         self._saved_ptr = QPoint(0, 0)
         self._opening = False
-        self._ptr = QTimer()
-        self._ptr.setInterval(150)
-        self._ptr.timeout.connect(self._track_idle)
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         try:
@@ -122,7 +118,6 @@ class KlipRingApp:
         self._poll.setInterval(2500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
-        self._ptr.start()
         self._start_watch()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
@@ -130,7 +125,6 @@ class KlipRingApp:
         self._register_dbus()
         self._maybe_register_shortcut()
         self._ingest_clipboard(force=True)
-        self._track_idle()
 
     def _register_dbus(self) -> None:
         bus = QDBusConnection.sessionBus()
@@ -143,67 +137,44 @@ class KlipRingApp:
         )
         bus.registerService(APP_ID)
 
-    def _track_idle(self) -> None:
-        if self.overlay.isVisible():
-            return
-        pos = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else QCursor.pos())
-        if self._last_ptr.x() < 0 or not looks_captured(pos.x(), pos.y(), self._last_ptr.x(), self._last_ptr.y()):
-            if not (pos.x() == 0 and pos.y() == 0):
-                self._last_ptr = QPoint(pos)
-        name = focused_window()
-        wid = active_window_id()
-        if is_self(name, wid):
-            return
-        if name and not name.startswith("unknown"):
-            self._target_win = name
-        if wid:
-            self._target_id = wid
-
     def pointer_target(self) -> QPoint:
-        kd = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
-        last = self._last_ptr
-        pos = kd
-        if last.x() >= 0 and looks_captured(pos.x(), pos.y(), last.x(), last.y()):
-            pos = QPoint(last)
-        elif last.x() >= 0 and pos.x() == 0 and pos.y() == 0:
-            pos = QPoint(last)
-        screen = QGuiApplication.screenAt(pos)
-        if screen is None and last.x() >= 0:
-            screen = QGuiApplication.screenAt(last)
-            if screen is not None:
-                pos = QPoint(last)
-        if screen is None:
-            if last.x() >= 0:
-                return QPoint(last)
-            screen = QGuiApplication.primaryScreen()
-            geo = screen.availableGeometry()
-            cx, cy = screen_center(geo.left(), geo.top(), geo.right(), geo.bottom())
-            return QPoint(int(cx), int(cy))
+        pos = QCursor.pos()
+        if pos.x() == 0 and pos.y() == 0 and self._last_ptr.x() >= 0:
+            return QPoint(self._last_ptr)
+        if not (pos.x() == 0 and pos.y() == 0):
+            self._last_ptr = QPoint(pos)
         return pos
 
     def show_overlay(self) -> None:
         if self.overlay.isVisible() or self._opening:
             return
-        self._opening = True
-        self._track_idle()
-        snap_name = self._target_win
-        snap_id = self._target_id
-        snap_ptr = QPoint(self.pointer_target())
-        QTimer.singleShot(50, lambda: self._open_confirmed(snap_name, snap_id, snap_ptr))
+        ptr = self.pointer_target()
+        name = focused_window()
+        wid = active_window_id()
+        if looks_exclusive(name, wid):
+            return
+        if is_self(name, wid):
+            self._opening = True
+            QTimer.singleShot(50, lambda: self._open_after_ctrl(ptr))
+            return
+        self._commit_open(name, wid, ptr)
 
-    def _open_confirmed(self, name: str, wid: str, ptr: QPoint) -> None:
+    def _open_after_ctrl(self, ptr: QPoint) -> None:
         self._opening = False
         if self.overlay.isVisible():
             return
-        now_name = focused_window()
-        now_id = active_window_id()
-        if name and not is_self(name, wid):
-            self._target_win, self._target_id = name, wid
-        elif now_name and not is_self(now_name, now_id):
-            self._target_win, self._target_id = now_name, now_id
+        name = focused_window()
+        wid = active_window_id()
+        if is_self(name, wid) or looks_exclusive(name, wid):
+            return
+        self._commit_open(name, wid, ptr)
+
+    def _commit_open(self, name: str, wid: str, ptr: QPoint) -> None:
+        self._target_win = name
+        self._target_id = wid
         self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
-        self.overlay.popup(self._saved_ptr)
+        self.overlay.popup(ptr)
 
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
@@ -333,7 +304,6 @@ class KlipRingApp:
     def stop(self) -> None:
         self._stopping = True
         self._poll.stop()
-        self._ptr.stop()
         for proc in (self._wl, self._wl_primary):
             if proc is not None:
                 try:

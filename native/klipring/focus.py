@@ -53,6 +53,49 @@ def is_self(label: str, window_id: str = "") -> bool:
     return "klipring" in blob or "klip-ring" in blob
 
 
+GAMES = (
+    "steam",
+    "gamescope",
+    "wine",
+    "lutris",
+    "heroic",
+    "minecraft",
+    "unreal",
+    "unity",
+    "dota",
+    "cs2",
+    "hl2",
+    "gamescope",
+    "org.freedesktop.impl.portal",
+)
+
+
+def looks_exclusive(label: str, window_id: str = "") -> bool:
+    """True for fullscreen / game-like surfaces we must not overlay."""
+    blob = (label or "").lower()
+    if any(g in blob for g in GAMES):
+        return True
+    geo = ""
+    if window_id:
+        geo = _cmd(["kdotool", "getwindowgeometry", window_id])
+    if not geo:
+        return False
+    nums = [int(n) for n in re.findall(r"\d+", geo)]
+    if len(nums) < 2:
+        return False
+    w, h = nums[-2], nums[-1]
+    try:
+        from PySide6.QtGui import QGuiApplication
+
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return False
+        sg = screen.geometry()
+        return w >= sg.width() - 8 and h >= sg.height() - 8
+    except Exception:
+        return w >= 1800 and h >= 1000
+
+
 def mouse_location(fallback=None):
     from PySide6.QtCore import QPoint
     from PySide6.QtGui import QCursor
@@ -95,8 +138,6 @@ def restore_pointer(pos) -> str:
     if _is_origin(pos):
         return "skip"
     QCursor.setPos(pos)
-    if shutil.which("kdotool"):
-        _cmd(["kdotool", "mousemove", str(int(pos.x())), str(int(pos.y()))])
     return "qt"
 
 

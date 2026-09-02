@@ -127,12 +127,28 @@ class Overlay(QWidget):
         self._armed_at = time.monotonic()
         self.clearMask()
         self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
+        self._apply_pass_through_mask()
         self._tick.start()
         self._chord.start()
         self._life.start()
         self.show()
         self.raise_()
         self.update()
+
+    def _apply_pass_through_mask(self) -> None:
+        """Only the disk receives clicks; the rest of the seat stays with the OS."""
+        ox = self.origin.x() - self.x()
+        oy = self.origin.y() - self.y()
+        r = self._max_radius() + 12
+        self.setMask(
+            QRegion(
+                int(ox - r),
+                int(oy - r),
+                int(r * 2),
+                int(r * 2),
+                QRegion.RegionType.Ellipse,
+            )
+        )
 
     def _release_seat(self) -> None:
         self._tick.stop()
