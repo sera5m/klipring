@@ -1,4 +1,4 @@
-"""Pointer target + on-screen clamp. Multi-monitor / pointer-lock safe."""
+"""Pointer target + on-screen clamp. Shift only the overflowing axis."""
 
 from __future__ import annotations
 
@@ -15,6 +15,17 @@ def looks_captured(x: int, y: int, last_x: int, last_y: int) -> bool:
     return False
 
 
+def clamp_axis(value: float, low: float, high: float) -> float:
+    """Keep value if it fits; otherwise the nearest in-range point. Never jump to mid."""
+    if low > high:
+        return (low + high) / 2
+    if value < low:
+        return low
+    if value > high:
+        return high
+    return value
+
+
 def clamp_origin(
     x: float,
     y: float,
@@ -26,19 +37,10 @@ def clamp_origin(
     pad: float = 18,
 ) -> tuple[float, float]:
     r = radius + pad
-    min_x = left + r
-    max_x = right - r
-    min_y = top + r
-    max_y = bottom - r
-    if min_x > max_x:
-        cx = (left + right) / 2
-    else:
-        cx = min(max(x, min_x), max_x)
-    if min_y > max_y:
-        cy = (top + bottom) / 2
-    else:
-        cy = min(max(y, min_y), max_y)
-    return cx, cy
+    return (
+        clamp_axis(x, left + r, right - r),
+        clamp_axis(y, top + r, bottom - r),
+    )
 
 
 def screen_center(left: float, top: float, right: float, bottom: float) -> tuple[float, float]:

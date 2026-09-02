@@ -14,6 +14,11 @@ class PointerTests(unittest.TestCase):
         self.assertGreaterEqual(oy - 300 - 18, 0)
         self.assertEqual(ox, 400)
 
+    def test_only_shifts_overflow_axis(self):
+        ox, oy = clamp_origin(400, 10, 0, 0, 2560, 1440, radius=200, pad=20)
+        self.assertEqual(ox, 400)
+        self.assertEqual(oy, 220)
+
     def test_tiny_screen_centers(self):
         ox, oy = clamp_origin(10, 10, 0, 0, 200, 200, radius=300, pad=18)
         self.assertEqual((ox, oy), screen_center(0, 0, 200, 200))

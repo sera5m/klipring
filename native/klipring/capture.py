@@ -34,6 +34,9 @@ def snapshot_wl() -> ClipboardItem | None:
     text = _wl_paste(["-n"])
     if text:
         return _text_item(text)
+    primary = _wl_paste(["-n", "-p"])
+    if primary:
+        return _text_item(primary)
     return None
 
 

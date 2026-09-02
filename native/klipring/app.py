@@ -96,17 +96,18 @@ class KlipRingApp:
         self._stopping = False
         self._last_ptr = QPoint(-1, -1)
         self._wl: QProcess | None = None
+        self._wl_primary: QProcess | None = None
         self._target_win = "unknown window"
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
+        try:
+            clip.changed.connect(lambda *_a: self._on_clipboard())
+        except Exception:
+            pass
         self._poll = QTimer()
-        self._poll.setInterval(500)
+        self._poll.setInterval(2500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
-        self._ptr = QTimer()
-        self._ptr.setInterval(40)
-        self._ptr.timeout.connect(self._track_pointer)
-        self._ptr.start()
         self._start_watch()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
@@ -147,6 +148,8 @@ class KlipRingApp:
             if screen is not None:
                 pos = QPoint(last)
         if screen is None:
+            if last.x() >= 0:
+                return QPoint(last)
             screen = QGuiApplication.primaryScreen()
             geo = screen.availableGeometry()
             cx, cy = screen_center(geo.left(), geo.top(), geo.right(), geo.bottom())
@@ -157,6 +160,7 @@ class KlipRingApp:
         if self.overlay.isVisible():
             return
         self._target_win = focused_window()
+        self._track_pointer()
         self._ingest_clipboard(force=True)
         self.overlay.popup(self.pointer_target())
 
@@ -208,7 +212,7 @@ class KlipRingApp:
             save_to_file(item.text, Path(dest))
             self._notify("Saved", dest)
 
-    def _on_clipboard(self) -> None:
+    def _on_clipboard(self, *_args) -> None:
         self._ingest_clipboard()
 
     def _poll_clipboard(self) -> None:
@@ -242,30 +246,39 @@ class KlipRingApp:
     def _start_watch(self) -> None:
         if self._stopping or not shutil.which("wl-paste"):
             return
-        if self._wl is not None:
-            try:
-                self._wl.kill()
-            except Exception:
-                pass
+        for proc in (self._wl, self._wl_primary):
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self._wl = self._spawn_watch([], restart=True)
+        self._wl_primary = self._spawn_watch(["-p"], restart=False)
+
+    def _spawn_watch(self, extra: list[str], restart: bool) -> QProcess:
         proc = QProcess()
         proc.setProgram("wl-paste")
-        proc.setArguments(["--watch", "printf", "."])
+        proc.setArguments([*extra, "--watch", "printf", "."])
         proc.readyReadStandardOutput.connect(self._on_clipboard)
-        proc.finished.connect(self._restart_watch)
+        if restart:
+            proc.finished.connect(self._restart_watch)
         proc.start()
-        self._wl = proc
+        return proc
 
     def _restart_watch(self) -> None:
         if self._stopping:
             return
-        QTimer.singleShot(1000, self._start_watch)
+        QTimer.singleShot(1200, self._start_watch)
 
     def stop(self) -> None:
         self._stopping = True
         self._poll.stop()
-        self._ptr.stop()
-        if self._wl is not None:
-            self._wl.kill()
+        for proc in (self._wl, self._wl_primary):
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
     def _make_tray(self) -> QSystemTrayIcon:
         icon_path = Path("/usr/share/icons/hicolor/scalable/apps/klipring.svg")

@@ -83,7 +83,14 @@ class ClipboardBuffer:
             "ignore_identical": self.ignore_identical,
             "items": [asdict(i) for i in self.items],
         }
-        self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self.path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        slots = self.path.parent / "slots"
+        slots.mkdir(parents=True, exist_ok=True)
+        for old in slots.iterdir():
+            if old.is_file():
+                old.unlink()
+        for i, item in enumerate(self.items, 1):
+            (slots / str(i)).write_text(item.text, encoding="utf-8")
 
     def load(self) -> None:
         if not self.path.exists():

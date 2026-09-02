@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QRadialGradient,
+    QRegion,
     QWheelEvent,
 )
 from PySide6.QtWidgets import QWidget
@@ -44,6 +45,7 @@ FG = QColor("#eff0f1")
 MUTED = QColor("#a8b0b4")
 GLASS = QColor(22, 18, 32, 150)
 CARD = QColor(28, 24, 40, 200)
+PAD = 28
 
 
 class Overlay(QWidget):
@@ -60,6 +62,7 @@ class Overlay(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.buffer = buffer
@@ -69,8 +72,12 @@ class Overlay(QWidget):
         self.on_save = on_save
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11DoNotAcceptFocus, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, False)
         self.origin = QPoint(0, 0)
         self.target = QPoint(0, 0)
         self.selected = 0
@@ -94,18 +101,20 @@ class Overlay(QWidget):
             return
         raw = pos if pos is not None else QCursor.pos()
         screen = QGuiApplication.screenAt(raw) or QGuiApplication.primaryScreen()
-        geo = screen.availableGeometry()
-        if not geo.contains(raw):
-            geo = screen.geometry()
-            if not geo.contains(raw):
-                raw = geo.center()
-        self._fit_to(geo.width(), geo.height())
+        work = screen.availableGeometry()
+        full = screen.geometry()
+        if not full.contains(raw):
+            raw = QPoint(
+                min(max(raw.x(), full.left()), full.right()),
+                min(max(raw.y(), full.top()), full.bottom()),
+            )
+        box = work if work.width() > 64 and work.height() > 64 else full
+        self._fit_to(box.width(), box.height())
         radius = self._max_radius()
-        pad = 96
         ox, oy = clamp_origin(
-            raw.x(), raw.y(), geo.left(), geo.top(), geo.right(), geo.bottom(), radius, pad=pad
+            raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
         )
-        side = int(2 * (radius + pad) + 8)
+        side = int(2 * (radius + PAD) + 8)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
@@ -114,15 +123,33 @@ class Overlay(QWidget):
         self._saw_ctrl = False
         self._armed_at = time.monotonic()
         self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
+        self._apply_input_mask()
         self._tick.start()
         self._chord.start()
         self.show()
         self.raise_()
-        handle = self.windowHandle()
-        if handle is not None:
-            handle.requestActivate()
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
         self.update()
+
+    def _apply_input_mask(self) -> None:
+        ox = self.origin.x() - self.x()
+        oy = self.origin.y() - self.y()
+        outer = self._max_radius() + 10
+        inner = max(12.0, self.inner - 6)
+        ring = QRegion(
+            int(ox - outer),
+            int(oy - outer),
+            int(outer * 2),
+            int(outer * 2),
+            QRegion.RegionType.Ellipse,
+        )
+        hole = QRegion(
+            int(ox - inner),
+            int(oy - inner),
+            int(inner * 2),
+            int(inner * 2),
+            QRegion.RegionType.Ellipse,
+        )
+        self.setMask(ring.subtracted(hole))
 
     def _poll_chord(self) -> None:
         if self._done or not self.isVisible():
@@ -159,8 +186,10 @@ class Overlay(QWidget):
         self.thick = 140.0
         self.gap = 36.0
         max_r = self._max_radius()
-        budget = min(width, height) / 2 - 28
+        budget = min(width, height) / 2 - PAD - 4
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
+        if scale < 0.2:
+            scale = 0.2
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
         self.gap = 36.0 * scale
