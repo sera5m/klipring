@@ -1,5 +1,5 @@
 """
-struct ClipboardItem { uint32_t age_s; std::string text; };
+struct ClipboardItem { uint32_t age_s; std::string text; std::string kind; };
 std::array<ClipboardItem, N> buffer;  // most-recent at [0]
 """
 
@@ -7,16 +7,21 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .geometry import DEFAULT_CAPACITY, MAX_CAPACITY, MIN_CAPACITY
+
+Kind = str  # text | file | directory | files
 
 
 @dataclass
 class ClipboardItem:
     text: str
-    copied_at: float  # epoch seconds
+    copied_at: float
+    kind: Kind = "text"
+    uris: list[str] = field(default_factory=list)
+    signature: str = ""
 
 
 class ClipboardBuffer:
@@ -30,21 +35,29 @@ class ClipboardBuffer:
     def mute(self, on: bool = True) -> None:
         self._mute = on
 
-    def push(self, text: str) -> ClipboardItem | None:
+    def push_item(self, item: ClipboardItem) -> ClipboardItem | None:
         if self._mute:
             return None
-        text = text or ""
-        if not text:
+        if not item.text and not item.uris:
             return None
-        if self.ignore_identical and self.items and self.items[0].text == text:
+        if not item.signature:
+            item.signature = item.kind + ":" + (item.uris[0] if item.uris else item.text)
+        if self.ignore_identical and self.items and self.items[0].signature == item.signature:
             self.items[0].copied_at = time.time()
             self.save()
             return self.items[0]
-        item = ClipboardItem(text=text, copied_at=time.time())
         self.items.insert(0, item)
         self.items = self.items[: self.capacity]
         self.save()
         return item
+
+    def push(self, text: str) -> ClipboardItem | None:
+        text = text or ""
+        if not text:
+            return None
+        return self.push_item(
+            ClipboardItem(text=text, copied_at=time.time(), kind="text", signature="text:" + text)
+        )
 
     def remove_at(self, index: int) -> int:
         if 0 <= index < len(self.items):
@@ -84,10 +97,18 @@ class ClipboardBuffer:
         items = []
         for raw in data.get("items", []):
             text = str(raw.get("text", ""))
-            if not text:
+            uris = [str(u) for u in raw.get("uris", []) if u]
+            if not text and not uris:
                 continue
+            kind = str(raw.get("kind", "text") or "text")
             items.append(
-                ClipboardItem(text=text, copied_at=float(raw.get("copied_at", time.time())))
+                ClipboardItem(
+                    text=text or "\n".join(uris),
+                    copied_at=float(raw.get("copied_at", time.time())),
+                    kind=kind,
+                    uris=uris,
+                    signature=str(raw.get("signature") or f"{kind}:{text[:80]}"),
+                )
             )
         self.items = items[: self.capacity]
 

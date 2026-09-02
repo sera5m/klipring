@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QCursor,
     QFont,
     QGuiApplication,
+    QIcon,
     QKeyEvent,
     QMouseEvent,
     QPainter,
@@ -77,6 +78,7 @@ class Overlay(QWidget):
         self._tick = QTimer(self)
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self.update)
+        self._icons: dict[str, QIcon] = {}
 
     def popup(self) -> None:
         pos = QCursor.pos()
@@ -113,6 +115,27 @@ class Overlay(QWidget):
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
         self.gap = 36.0 * scale
+
+    def _kind_icon(self, kind: str) -> QIcon:
+        cached = self._icons.get(kind)
+        if cached is not None:
+            return cached
+        names = {
+            "text": ("text-x-generic", "text-plain", "document"),
+            "file": ("unknown", "application-x-generic", "text-x-generic"),
+            "directory": ("folder", "inode-directory", "folder-open"),
+            "files": ("document-multiple", "folder-copy", "edit-copy"),
+        }
+        icon = QIcon()
+        for name in names.get(kind, ("text-x-generic",)):
+            ic = QIcon.fromTheme(name)
+            if not ic.isNull():
+                icon = ic
+                break
+        if icon.isNull():
+            icon = QIcon.fromTheme("edit-paste")
+        self._icons[kind] = icon
+        return icon
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -169,9 +192,19 @@ class Overlay(QWidget):
                     p.setPen(QPen(QColor(155, 109, 255, 70), 1.0))
                 p.drawPath(slice_path)
 
+        now = time.time()
+        for i, item in enumerate(items):
+            ring, slot, slots = locate(i)
+            angle = -math.pi / 2 + slot * ((math.pi * 2) / slots)
+            inner_r = self.inner + ring * (self.thick + self.gap)
+            ir = inner_r + min(24.0, self.thick * 0.2)
+            ix = ox + math.cos(angle) * ir
+            iy = oy + math.sin(angle) * ir
+            pix = self._kind_icon(item.kind).pixmap(28, 28)
+            p.drawPixmap(int(ix - pix.width() / 2), int(iy - pix.height() / 2), pix)
+
         font = QFont("Noto Sans", 9)
         p.setFont(font)
-        now = time.time()
         for i, item in enumerate(items):
             ring, slot, slots = locate(i)
             radius = self.inner + self.thick / 2 + ring * (self.thick + self.gap)
@@ -186,8 +219,9 @@ class Overlay(QWidget):
             p.drawRoundedRect(card, 8, 8)
             age = format_age(now - item.copied_at)
             badge = badge_for_index(i)
+            meta = _size_label(item)
             p.setPen(FG)
-            header = f"{badge}  {format_kib(item.text)} · {age}"
+            header = f"{badge}  {meta} · {age}"
             p.drawText(card.adjusted(8, 6, -8, -8), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, header)
             p.setPen(MUTED if not active else FG)
             body = preview(item.text, 128 if active else 32)
@@ -203,7 +237,7 @@ class Overlay(QWidget):
         p.drawText(
             QRectF(ox - 60, oy - 18, 120, 36),
             Qt.AlignmentFlag.AlignCenter,
-            f"{label}\nrelease V to paste" if n else "empty",
+            f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
         )
         p.end()
 
@@ -311,3 +345,34 @@ def _annular(cx: float, cy: float, r_in: float, r_out: float, a0: float, a1: flo
         path.lineTo(cx + math.cos(t) * r_in, cy + math.sin(t) * r_in)
     path.closeSubpath()
     return path
+
+
+def _size_label(item) -> str:
+    if getattr(item, "kind", "text") == "files":
+        return f"{len(item.uris)} items"
+    if getattr(item, "kind", "") == "directory":
+        return "folder"
+    if getattr(item, "kind", "") == "file" and getattr(item, "uris", None):
+        from pathlib import Path
+
+        from PySide6.QtCore import QUrl
+
+        path = Path(QUrl(item.uris[0]).toLocalFile())
+        try:
+            if path.is_file():
+                return _kib(path.stat().st_size)
+        except OSError:
+            return "file"
+        return "file"
+    return format_kib(item.text)
+
+
+def _kib(n: int) -> str:
+    kib = n / 1024
+    if kib < 0.01:
+        return f"{kib:.3f} KiB"
+    if kib < 10:
+        return f"{kib:.2f} KiB"
+    if kib < 100:
+        return f"{kib:.1f} KiB"
+    return f"{round(kib)} KiB"

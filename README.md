@@ -4,6 +4,8 @@ Radial clipboard pie for **KDE Plasma 6** on Arch / EndeavourOS.
 
 Hold **Ctrl+V**. A hollow purple ring opens on the cursor. Hover a slice, release **V**, it pastes **once** into the focused window.
 
+Copies of **text, files, and folders** are watched (not only Qt text). Each slice gets a type icon (document / file / folder). The pie layout is unchanged.
+
 This is the native daemon (`native/`). The web UI in `src/` is a browser prototype, not what you install.
 
 ## Install on EndeavourOS / Arch

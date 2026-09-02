@@ -17,9 +17,10 @@ from PySide6.QtWidgets import (
 
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
+from .capture import snapshot
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
-from .paste import open_in_editor, save_to_file, send_ctrl_v, set_clipboard_qt
+from .paste import open_clip, save_to_file, send_ctrl_v, set_clipboard_item
 
 
 def data_dir() -> Path:
@@ -63,13 +64,19 @@ class KlipRingApp:
         )
         self.bridge = Bridge(self)
         self._mute_clip = False
+        self._last_sig = ""
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
+        self._poll = QTimer()
+        self._poll.setInterval(350)
+        self._poll.timeout.connect(self._poll_clipboard)
+        self._poll.start()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
         self._refresh_tray()
         self._register_dbus()
         self._maybe_register_shortcut()
+        self._ingest_clipboard()
 
     def _register_dbus(self) -> None:
         bus = QDBusConnection.sessionBus()
@@ -83,21 +90,22 @@ class KlipRingApp:
         bus.registerService(APP_ID)
 
     def show_overlay(self) -> None:
+        self._ingest_clipboard(force=True)
         self.overlay.popup()
 
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
             return
-        text = self.buffer.items[index].text
+        item = self.buffer.items[index]
         self._mute_clip = True
         self.buffer.mute(True)
-        set_clipboard_qt(text)
-        QTimer.singleShot(40, lambda: self._finish_paste(text))
+        set_clipboard_item(item)
+        QTimer.singleShot(40, lambda: self._finish_paste(item.text))
 
     def _finish_paste(self, _text: str) -> None:
         send_ctrl_v()
         self.buffer.mute(False)
-        QTimer.singleShot(200, lambda: setattr(self, "_mute_clip", False))
+        QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
         self._notify("Pasted", "Clip sent to the focused window.")
 
     def drop_index(self, index: int) -> int:
@@ -110,8 +118,8 @@ class KlipRingApp:
         if not (0 <= index < len(self.buffer.items)):
             return
         item = self.buffer.items[index]
-        open_in_editor(item.text, f"clip-{int(item.copied_at)}.txt")
-        self._notify("Opened", "Kate / default editor.")
+        open_clip(item, f"clip-{int(item.copied_at)}.txt")
+        self._notify("Opened", "Kate / file manager.")
 
     def save_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
@@ -125,11 +133,23 @@ class KlipRingApp:
             self._notify("Saved", dest)
 
     def _on_clipboard(self) -> None:
-        if self._mute_clip or self.overlay.isVisible():
+        self._ingest_clipboard()
+
+    def _poll_clipboard(self) -> None:
+        self._ingest_clipboard()
+
+    def _ingest_clipboard(self, force: bool = False) -> None:
+        if self._mute_clip:
             return
-        text = QGuiApplication.clipboard().text()
-        if text:
-            self.buffer.push(text)
+        if not force and self.overlay.isVisible():
+            return
+        item = snapshot()
+        if item is None:
+            return
+        if item.signature == self._last_sig:
+            return
+        self._last_sig = item.signature
+        if self.buffer.push_item(item):
             self._refresh_tray()
 
     def _make_tray(self) -> QSystemTrayIcon:
