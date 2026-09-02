@@ -6,6 +6,8 @@ Hold **Ctrl+V**. A hollow purple ring opens on the cursor. Hover a slice, releas
 
 Copies of **text, files, and folders** are watched (not only Qt text). Each slice gets a type icon (document / file / folder). The pie layout is unchanged.
 
+On a dual-monitor Plasma/Wayland box the ring stays on the active screen: if you invoke it near the bottom it slides up, a small hub arrow points at the real cursor, and a captured/0,0 pointer falls back to the last real mouse position (or the screen center).
+
 This is the native daemon (`native/`). The web UI in `src/` is a browser prototype, not what you install.
 
 ## Install on EndeavourOS / Arch

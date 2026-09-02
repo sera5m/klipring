@@ -22,6 +22,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from .buffer import ClipboardBuffer
+from .pointer import clamp_origin
 from .geometry import (
     badge_for_index,
     format_age,
@@ -58,7 +59,8 @@ class Overlay(QWidget):
             None,
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool,
+            | Qt.WindowType.Tool
+            | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.buffer = buffer
         self.on_paste = on_paste
@@ -70,6 +72,7 @@ class Overlay(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.origin = QPoint(0, 0)
+        self.target = QPoint(0, 0)
         self.selected = 0
         self.v_down = True
         self.inner = 124.0
@@ -79,38 +82,82 @@ class Overlay(QWidget):
         self._tick.setInterval(1000)
         self._tick.timeout.connect(self.update)
         self._icons: dict[str, QIcon] = {}
+        self._kbd = False
 
-    def popup(self) -> None:
-        pos = QCursor.pos()
-        screen = QGuiApplication.screenAt(pos) or QGuiApplication.primaryScreen()
-        geo = screen.geometry()
+    def popup(self, pos: QPoint | None = None) -> None:
+        raw = pos if pos is not None else QCursor.pos()
+        screen = QGuiApplication.screenAt(raw) or QGuiApplication.primaryScreen()
+        geo = screen.availableGeometry()
+        if not geo.contains(raw):
+            geo = screen.geometry()
+            if not geo.contains(raw):
+                raw = geo.center()
         self.setGeometry(geo)
-        self.origin = pos
+        self.target = raw
         self.selected = 0
         self.v_down = True
         self._fit()
+        radius = self._max_radius()
+        ox, oy = clamp_origin(
+            raw.x(), raw.y(), geo.left(), geo.top(), geo.right(), geo.bottom(), radius, pad=96
+        )
+        self.origin = QPoint(int(ox), int(oy))
         self._tick.start()
         self.show()
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
-        self.grabKeyboard()
+        self._arm_input()
+        QTimer.singleShot(30, self._arm_input)
+        QTimer.singleShot(90, self._arm_input)
         self.update()
 
+    def _arm_input(self) -> None:
+        if not self.isVisible():
+            return
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        self.grabKeyboard()
+        self.grabMouse()
+        handle = self.windowHandle()
+        if handle is not None:
+            self._kbd = bool(handle.setKeyboardGrabEnabled(True))
+            handle.setMouseGrabEnabled(True)
+
     def dismiss(self, paste: bool = False) -> None:
-        self.releaseKeyboard()
+        try:
+            self.releaseKeyboard()
+        except RuntimeError:
+            pass
+        try:
+            self.releaseMouse()
+        except RuntimeError:
+            pass
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setKeyboardGrabEnabled(False)
+            handle.setMouseGrabEnabled(False)
         self._tick.stop()
         self.hide()
         if paste and self.buffer.items:
             idx = max(0, min(self.selected, len(self.buffer.items) - 1))
             self.on_paste(idx)
 
-    def _fit(self) -> None:
+    def _max_radius(self) -> float:
         n = max(1, len(self.buffer.items))
         rings = ring_count_for(n)
-        max_r = self.inner + self.thick + (rings - 1) * (self.thick + self.gap)
+        return self.inner + self.thick + (rings - 1) * (self.thick + self.gap)
+
+    def _fit(self) -> None:
+        max_r = self._max_radius() if self.inner else 124.0 + 140.0
+        # reset then scale against this screen
+        self.inner = 124.0
+        self.thick = 140.0
+        self.gap = 36.0
+        max_r = self._max_radius()
         screen = self.geometry()
-        budget = min(screen.width(), screen.height()) / 2 - 24
+        budget = min(screen.width(), screen.height()) / 2 - 28
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
@@ -136,6 +183,34 @@ class Overlay(QWidget):
             icon = QIcon.fromTheme("edit-paste")
         self._icons[kind] = icon
         return icon
+
+    def _draw_target_arrow(self, p: QPainter, ox: float, oy: float) -> None:
+        tx = self.target.x() - self.x()
+        ty = self.target.y() - self.y()
+        dx = tx - ox
+        dy = ty - oy
+        dist = math.hypot(dx, dy)
+        if dist < 14:
+            return
+        ang = math.atan2(dy, dx)
+        p.save()
+        p.translate(ox, oy)
+        p.rotate(math.degrees(ang))
+        glow = QColor(PLASMA)
+        glow.setAlpha(180)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(glow)
+        tip = 22
+        arrow = QPainterPath()
+        arrow.moveTo(tip, 0)
+        arrow.lineTo(tip - 16, 7)
+        arrow.lineTo(tip - 16, -7)
+        arrow.closeSubpath()
+        p.drawPath(arrow)
+        p.restore()
+        p.setPen(QPen(PLASMA, 2))
+        p.setBrush(QColor(61, 174, 233, 220))
+        p.drawEllipse(QRectF(tx - 3.5, ty - 3.5, 7, 7))
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -235,10 +310,11 @@ class Overlay(QWidget):
         p.setFont(QFont("Noto Sans Mono", 10))
         label = f"{selected + 1}/{n}" if n else "0/0"
         p.drawText(
-            QRectF(ox - 60, oy - 18, 120, 36),
+            QRectF(ox - 60, oy - 22, 120, 44),
             Qt.AlignmentFlag.AlignCenter,
             f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
         )
+        self._draw_target_arrow(p, ox, oy)
         p.end()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:

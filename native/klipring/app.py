@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import signal
+import shutil
 import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QStandardPaths, Qt, QTimer, Slot
+from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QStandardPaths, Qt, QTimer, Slot
 from PySide6.QtDBus import QDBusConnection, QDBusMessage
-from PySide6.QtGui import QAction, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QCursor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -21,6 +23,7 @@ from .capture import snapshot
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_ctrl_v, set_clipboard_item
+from .pointer import looks_captured, screen_center
 
 
 def data_dir() -> Path:
@@ -51,6 +54,23 @@ class Bridge(QObject):
             self._app.show_overlay()
 
 
+class KeyFilter(QObject):
+    """Catch V-up even if the overlay lost the Wayland keyboard grab."""
+
+    def __init__(self, overlay: Overlay) -> None:
+        super().__init__()
+        self.overlay = overlay
+
+    def eventFilter(self, _obj, event) -> bool:  # noqa: ANN001
+        if not self.overlay.isVisible():
+            return False
+        if event.type() == QEvent.Type.KeyRelease and not event.isAutoRepeat():
+            if event.key() == Qt.Key.Key_V:
+                self.overlay.dismiss(True)
+                return True
+        return False
+
+
 class KlipRingApp:
     def __init__(self) -> None:
         self.buffer = ClipboardBuffer(data_dir() / "buffer.json", DEFAULT_CAPACITY)
@@ -65,18 +85,28 @@ class KlipRingApp:
         self.bridge = Bridge(self)
         self._mute_clip = False
         self._last_sig = ""
+        self._ingesting = False
+        self._stopping = False
+        self._last_ptr = QPoint(-1, -1)
+        self._wl: QProcess | None = None
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         self._poll = QTimer()
-        self._poll.setInterval(350)
+        self._poll.setInterval(2000)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
+        self._ptr = QTimer()
+        self._ptr.setInterval(40)
+        self._ptr.timeout.connect(self._track_pointer)
+        self._ptr.start()
+        self._start_watch()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
         self._refresh_tray()
         self._register_dbus()
         self._maybe_register_shortcut()
-        self._ingest_clipboard()
+        self._ingest_clipboard(force=True)
+        self._track_pointer()
 
     def _register_dbus(self) -> None:
         bus = QDBusConnection.sessionBus()
@@ -89,9 +119,35 @@ class KlipRingApp:
         )
         bus.registerService(APP_ID)
 
+    def _track_pointer(self) -> None:
+        pos = QCursor.pos()
+        if self._last_ptr.x() < 0:
+            self._last_ptr = QPoint(pos)
+            return
+        if looks_captured(pos.x(), pos.y(), self._last_ptr.x(), self._last_ptr.y()):
+            return
+        self._last_ptr = QPoint(pos)
+
+    def pointer_target(self) -> QPoint:
+        pos = QCursor.pos()
+        last = self._last_ptr
+        if last.x() >= 0 and looks_captured(pos.x(), pos.y(), last.x(), last.y()):
+            pos = QPoint(last)
+        screen = QGuiApplication.screenAt(pos)
+        if screen is None and last.x() >= 0:
+            screen = QGuiApplication.screenAt(last)
+            if screen is not None:
+                pos = QPoint(last)
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+            geo = screen.availableGeometry()
+            cx, cy = screen_center(geo.left(), geo.top(), geo.right(), geo.bottom())
+            return QPoint(int(cx), int(cy))
+        return pos
+
     def show_overlay(self) -> None:
         self._ingest_clipboard(force=True)
-        self.overlay.popup()
+        self.overlay.popup(self.pointer_target())
 
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
@@ -100,7 +156,7 @@ class KlipRingApp:
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        QTimer.singleShot(40, lambda: self._finish_paste(item.text))
+        QTimer.singleShot(120, lambda: self._finish_paste(item.text))
 
     def _finish_paste(self, _text: str) -> None:
         send_ctrl_v()
@@ -136,14 +192,25 @@ class KlipRingApp:
         self._ingest_clipboard()
 
     def _poll_clipboard(self) -> None:
-        self._ingest_clipboard()
+        try:
+            self._ingest_clipboard()
+        except KeyboardInterrupt:
+            QApplication.instance().quit()
+        except Exception:
+            return
 
     def _ingest_clipboard(self, force: bool = False) -> None:
-        if self._mute_clip:
+        if self._mute_clip or self._ingesting:
             return
         if not force and self.overlay.isVisible():
             return
-        item = snapshot()
+        self._ingesting = True
+        try:
+            item = snapshot()
+        except Exception:
+            item = None
+        finally:
+            self._ingesting = False
         if item is None:
             return
         if item.signature == self._last_sig:
@@ -151,6 +218,34 @@ class KlipRingApp:
         self._last_sig = item.signature
         if self.buffer.push_item(item):
             self._refresh_tray()
+
+    def _start_watch(self) -> None:
+        if self._stopping or not shutil.which("wl-paste"):
+            return
+        if self._wl is not None:
+            try:
+                self._wl.kill()
+            except Exception:
+                pass
+        proc = QProcess()
+        proc.setProgram("wl-paste")
+        proc.setArguments(["--watch", "printf", "."])
+        proc.readyReadStandardOutput.connect(self._on_clipboard)
+        proc.finished.connect(self._restart_watch)
+        proc.start()
+        self._wl = proc
+
+    def _restart_watch(self) -> None:
+        if self._stopping:
+            return
+        QTimer.singleShot(1000, self._start_watch)
+
+    def stop(self) -> None:
+        self._stopping = True
+        self._poll.stop()
+        self._ptr.stop()
+        if self._wl is not None:
+            self._wl.kill()
 
     def _make_tray(self) -> QSystemTrayIcon:
         icon_path = Path("/usr/share/icons/hicolor/scalable/apps/klipring.svg")
@@ -279,8 +374,27 @@ def run(argv: list[str]) -> int:
         return 0
 
     host = KlipRingApp()
+    filt = KeyFilter(host.overlay)
+    qapp.installEventFilter(filt)
+    qapp.aboutToQuit.connect(host.stop)
+
+    def _stop(*_args) -> None:
+        host.stop()
+        qapp.quit()
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+    beat = QTimer()
+    beat.setInterval(200)
+    beat.timeout.connect(lambda: None)
+    beat.start()
+
     if show_only:
         QTimer.singleShot(50, host.show_overlay)
     else:
         host._notify(APP_NAME, "Clipboard ring is in the tray. Hold Ctrl+V after binding the shortcut.")
-    return qapp.exec()
+    try:
+        return qapp.exec()
+    except KeyboardInterrupt:
+        host.stop()
+        return 0

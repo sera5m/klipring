@@ -14,7 +14,10 @@ from .buffer import ClipboardItem
 
 def snapshot(clip: QClipboard | None = None) -> ClipboardItem | None:
     clip = clip or QGuiApplication.clipboard()
-    md = clip.mimeData()
+    try:
+        md = clip.mimeData()
+    except Exception:
+        return None
     if md is None:
         return None
 
