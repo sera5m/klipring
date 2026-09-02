@@ -46,6 +46,7 @@ MUTED = QColor("#a8b0b4")
 GLASS = QColor(22, 18, 32, 150)
 CARD = QColor(28, 24, 40, 200)
 PAD = 28
+LIFE_MS = 45_000
 
 
 class Overlay(QWidget):
@@ -84,14 +85,14 @@ class Overlay(QWidget):
         self.thick = 140.0
         self.gap = 36.0
         self._tick = QTimer(self)
-        self._tick.setInterval(1000)
+        self._tick.setInterval(500)
         self._tick.timeout.connect(self.update)
         self._chord = QTimer(self)
         self._chord.setInterval(16)
         self._chord.timeout.connect(self._poll_chord)
         self._life = QTimer(self)
         self._life.setSingleShot(True)
-        self._life.setInterval(45_000)
+        self._life.setInterval(LIFE_MS)
         self._life.timeout.connect(lambda: self.dismiss(False))
         self._icons: dict[str, QIcon] = {}
         self._done = False
@@ -349,9 +350,17 @@ class Overlay(QWidget):
         p.setFont(QFont("Noto Sans Mono", 10))
         label = f"{selected + 1}/{n}" if n else "0/0"
         p.drawText(
-            QRectF(ox - 60, oy - 22, 120, 44),
+            QRectF(ox - 70, oy - 34, 140, 48),
             Qt.AlignmentFlag.AlignCenter,
             f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
+        )
+        remain = max(0, math.ceil(LIFE_MS / 1000 - (time.monotonic() - self._armed_at)))
+        p.setPen(MUTED)
+        p.setFont(QFont("Noto Sans", 7))
+        p.drawText(
+            QRectF(ox - 70, oy + 16, 140, 16),
+            Qt.AlignmentFlag.AlignCenter,
+            f"autoclose in {remain} s",
         )
         self._draw_target_arrow(p, ox, oy)
         p.end()
