@@ -61,15 +61,20 @@ def _local_or_uri(uri: str) -> str:
     return local or uri
 
 
-def send_paste() -> tuple[bool, str]:
-    """Inject paste. Returns (ok, how)."""
+def send_paste(terminal: bool = False) -> tuple[bool, str]:
+    """Inject paste. Returns (ok, how). Terminals want Ctrl+Shift+V."""
     _block_global_shortcuts(True)
     try:
-        for fn in (_ydotool_shift_insert, _ydotool_ctrl_v, _dotool_paste, _wtype_paste, _xdotool_paste):
+        order = (
+            (_ydotool_ctrl_shift_v, _ydotool_shift_insert, _dotool_paste, _wtype_paste, _xdotool_paste)
+            if terminal
+            else (_ydotool_shift_insert, _ydotool_ctrl_v, _dotool_paste, _wtype_paste, _xdotool_paste)
+        )
+        for fn in order:
             ok, how = fn()
             if ok:
                 return True, how
-        return False, "no injector (KWin has no virtual keyboard; install ydotool + ydotoold)"
+        return False, "no injector (install ydotool + ydotoold; KWin has no virtual keyboard)"
     finally:
         _block_global_shortcuts(False)
 
@@ -106,6 +111,16 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[bytes] | None:
         return subprocess.run(args, check=False, timeout=2, capture_output=True)
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+def _ydotool_ctrl_shift_v() -> tuple[bool, str]:
+    r = _run(["ydotool", "key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"])
+    if _ok(r):
+        return True, "ydotool Ctrl+Shift+V"
+    r = _run(["ydotool", "key", "ctrl+shift+v"])
+    if _ok(r):
+        return True, "ydotool Ctrl+Shift+V"
+    return False, ""
 
 
 def _ydotool_shift_insert() -> tuple[bool, str]:

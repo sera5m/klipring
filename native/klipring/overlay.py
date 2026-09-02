@@ -131,25 +131,20 @@ class Overlay(QWidget):
         self.update()
 
     def _apply_input_mask(self) -> None:
+        """Solid disk under the cursor so the wheel owns the pointer immediately.
+        Outside the circle, clicks pass through to the app."""
         ox = self.origin.x() - self.x()
         oy = self.origin.y() - self.y()
-        outer = self._max_radius() + 10
-        inner = max(12.0, self.inner - 6)
-        ring = QRegion(
-            int(ox - outer),
-            int(oy - outer),
-            int(outer * 2),
-            int(outer * 2),
-            QRegion.RegionType.Ellipse,
+        outer = self._max_radius() + 12
+        self.setMask(
+            QRegion(
+                int(ox - outer),
+                int(oy - outer),
+                int(outer * 2),
+                int(outer * 2),
+                QRegion.RegionType.Ellipse,
+            )
         )
-        hole = QRegion(
-            int(ox - inner),
-            int(oy - inner),
-            int(inner * 2),
-            int(inner * 2),
-            QRegion.RegionType.Ellipse,
-        )
-        self.setMask(ring.subtracted(hole))
 
     def _poll_chord(self) -> None:
         if self._done or not self.isVisible():
@@ -418,19 +413,16 @@ class Overlay(QWidget):
             return
         if event.button() == Qt.MouseButton.LeftButton:
             ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
-            hit = hit_index_at(
-                event.position().x() - ox,
-                event.position().y() - oy,
-                len(self.buffer.items),
-                self.inner,
-                self.thick,
-                self.gap,
-            )
-            if hit is None:
-                self.dismiss(False)
-            else:
+            dx = event.position().x() - ox
+            dy = event.position().y() - oy
+            hit = hit_index_at(dx, dy, len(self.buffer.items), self.inner, self.thick, self.gap)
+            if hit is not None:
                 self.selected = hit
                 self.dismiss(True)
+            elif math.hypot(dx, dy) <= self._max_radius() + 12:
+                self.dismiss(True)
+            else:
+                self.dismiss(False)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         n = len(self.buffer.items)

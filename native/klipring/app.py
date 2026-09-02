@@ -19,7 +19,14 @@ from PySide6.QtWidgets import (
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
 from .capture import snapshot
-from .focus import focused_window
+from .focus import (
+    activate_window,
+    active_window_id,
+    focused_window,
+    is_terminal,
+    mouse_location,
+    restore_pointer,
+)
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
@@ -98,6 +105,8 @@ class KlipRingApp:
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
         self._target_win = "unknown window"
+        self._target_id = ""
+        self._saved_ptr = QPoint(0, 0)
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         try:
@@ -108,6 +117,10 @@ class KlipRingApp:
         self._poll.setInterval(2500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
+        self._ptr = QTimer()
+        self._ptr.setInterval(150)
+        self._ptr.timeout.connect(self._track_pointer)
+        self._ptr.start()
         self._start_watch()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
@@ -129,7 +142,7 @@ class KlipRingApp:
         bus.registerService(APP_ID)
 
     def _track_pointer(self) -> None:
-        pos = QCursor.pos()
+        pos = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else QCursor.pos())
         if self._last_ptr.x() < 0:
             self._last_ptr = QPoint(pos)
             return
@@ -138,9 +151,12 @@ class KlipRingApp:
         self._last_ptr = QPoint(pos)
 
     def pointer_target(self) -> QPoint:
-        pos = QCursor.pos()
+        kd = mouse_location(None)
         last = self._last_ptr
+        pos = kd
         if last.x() >= 0 and looks_captured(pos.x(), pos.y(), last.x(), last.y()):
+            pos = QPoint(last)
+        elif last.x() >= 0 and pos.x() == 0 and pos.y() == 0:
             pos = QPoint(last)
         screen = QGuiApplication.screenAt(pos)
         if screen is None and last.x() >= 0:
@@ -159,10 +175,12 @@ class KlipRingApp:
     def show_overlay(self) -> None:
         if self.overlay.isVisible():
             return
-        self._target_win = focused_window()
         self._track_pointer()
+        self._saved_ptr = QPoint(self.pointer_target())
+        self._target_win = focused_window()
+        self._target_id = active_window_id()
         self._ingest_clipboard(force=True)
-        self.overlay.popup(self.pointer_target())
+        self.overlay.popup(self._saved_ptr)
 
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
@@ -171,21 +189,25 @@ class KlipRingApp:
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        QTimer.singleShot(140, lambda: self._finish_paste())
+        restore_pointer(self._saved_ptr)
+        activate_window(self._target_id)
+        QTimer.singleShot(90, lambda: self._finish_paste())
 
     def _finish_paste(self) -> None:
-        ok, how = send_paste()
-        target = focused_window()
-        if target.startswith("unknown"):
-            target = self._target_win
+        restore_pointer(self._saved_ptr)
+        activate_window(self._target_id)
+        term = is_terminal(self._target_win)
+        ok, how = send_paste(terminal=term)
+        target = self._target_win or focused_window()
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        hint = "Ctrl+Shift+V" if term else "Shift+Insert"
         if ok:
             self._notify("Pasted", f"Pasted in {target}\nvia {how}")
         else:
             self._notify(
                 "Clipboard set — not injected",
-                f"Would paste in {target}\n{how}\nPress Shift+Insert there.",
+                f"Would paste in {target}\n{how}\nPress {hint} there.",
             )
 
     def drop_index(self, index: int) -> int:
@@ -273,6 +295,7 @@ class KlipRingApp:
     def stop(self) -> None:
         self._stopping = True
         self._poll.stop()
+        self._ptr.stop()
         for proc in (self._wl, self._wl_primary):
             if proc is not None:
                 try:
