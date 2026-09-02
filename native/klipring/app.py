@@ -19,9 +19,10 @@ from PySide6.QtWidgets import (
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
 from .capture import snapshot
+from .focus import focused_window
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
-from .paste import open_clip, save_to_file, send_ctrl_v, set_clipboard_item
+from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
 from .pointer import looks_captured, screen_center
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
@@ -95,10 +96,11 @@ class KlipRingApp:
         self._stopping = False
         self._last_ptr = QPoint(-1, -1)
         self._wl: QProcess | None = None
+        self._target_win = "unknown window"
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         self._poll = QTimer()
-        self._poll.setInterval(2000)
+        self._poll.setInterval(500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
         self._ptr = QTimer()
@@ -154,6 +156,7 @@ class KlipRingApp:
     def show_overlay(self) -> None:
         if self.overlay.isVisible():
             return
+        self._target_win = focused_window()
         self._ingest_clipboard(force=True)
         self.overlay.popup(self.pointer_target())
 
@@ -164,13 +167,22 @@ class KlipRingApp:
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        QTimer.singleShot(120, lambda: self._finish_paste(item.text))
+        QTimer.singleShot(140, lambda: self._finish_paste())
 
-    def _finish_paste(self, _text: str) -> None:
-        send_ctrl_v()
+    def _finish_paste(self) -> None:
+        ok, how = send_paste()
+        target = focused_window()
+        if target.startswith("unknown"):
+            target = self._target_win
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
-        self._notify("Pasted", "Clip sent to the focused window.")
+        if ok:
+            self._notify("Pasted", f"Pasted in {target}\nvia {how}")
+        else:
+            self._notify(
+                "Clipboard set — not injected",
+                f"Would paste in {target}\n{how}\nPress Shift+Insert there.",
+            )
 
     def drop_index(self, index: int) -> int:
         nxt = self.buffer.remove_at(index)

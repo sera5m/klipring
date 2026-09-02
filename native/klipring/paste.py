@@ -1,4 +1,8 @@
-"""Put the clip on the system clipboard and emit a real Ctrl+V to the focused app."""
+"""Put the clip on the system clipboard and inject a paste into the focused app.
+
+KWin does not implement the virtual-keyboard protocol, so wtype always fails
+there. Prefer ydotool (uinput) and block KGlobalAccel so Ctrl+V does not reopen us.
+"""
 
 from __future__ import annotations
 
@@ -32,16 +36,6 @@ def set_clipboard_item(item: ClipboardItem) -> None:
     _wl_copy(item)
 
 
-def set_clipboard_qt(text: str) -> None:
-    from PySide6.QtGui import QGuiApplication
-
-    QGuiApplication.clipboard().setText(text)
-    try:
-        subprocess.run(["wl-copy"], input=text.encode("utf-8"), check=False, timeout=1)
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        pass
-
-
 def _wl_copy(item: ClipboardItem) -> None:
     if not shutil.which("wl-copy"):
         return
@@ -67,26 +61,105 @@ def _local_or_uri(uri: str) -> str:
     return local or uri
 
 
+def send_paste() -> tuple[bool, str]:
+    """Inject paste. Returns (ok, how)."""
+    _block_global_shortcuts(True)
+    try:
+        for fn in (_ydotool_shift_insert, _ydotool_ctrl_v, _dotool_paste, _wtype_paste, _xdotool_paste):
+            ok, how = fn()
+            if ok:
+                return True, how
+        return False, "no injector (KWin has no virtual keyboard; install ydotool + ydotoold)"
+    finally:
+        _block_global_shortcuts(False)
+
+
 def send_ctrl_v() -> bool:
-    env = os.environ.get("XDG_SESSION_TYPE", "").lower()
-    if shutil.which("wtype"):
+    ok, _ = send_paste()
+    return ok
+
+
+def _block_global_shortcuts(on: bool) -> None:
+    try:
+        from PySide6.QtDBus import QDBusConnection, QDBusMessage
+
+        msg = QDBusMessage.createMethodCall(
+            "org.kde.kglobalaccel",
+            "/kglobalaccel",
+            "org.kde.KGlobalAccel",
+            "blockGlobalShortcuts",
+        )
+        msg.setArguments([bool(on)])
+        QDBusConnection.sessionBus().call(msg)
+    except Exception:
+        pass
+
+
+def _ok(r: subprocess.CompletedProcess[bytes] | None) -> bool:
+    return r is not None and r.returncode == 0
+
+
+def _run(args: list[str]) -> subprocess.CompletedProcess[bytes] | None:
+    if not shutil.which(args[0]):
+        return None
+    try:
+        return subprocess.run(args, check=False, timeout=2, capture_output=True)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _ydotool_shift_insert() -> tuple[bool, str]:
+    r = _run(["ydotool", "key", "42:1", "110:1", "110:0", "42:0"])
+    if _ok(r):
+        return True, "ydotool Shift+Insert"
+    r = _run(["ydotool", "key", "Shift+Insert"])
+    if _ok(r):
+        return True, "ydotool Shift+Insert"
+    return False, ""
+
+
+def _ydotool_ctrl_v() -> tuple[bool, str]:
+    r = _run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"])
+    if _ok(r):
+        return True, "ydotool Ctrl+V"
+    r = _run(["ydotool", "key", "ctrl+v"])
+    if _ok(r):
+        return True, "ydotool Ctrl+V"
+    return False, ""
+
+
+def _dotool_paste() -> tuple[bool, str]:
+    if not shutil.which("dotool"):
+        return False, ""
+    try:
         r = subprocess.run(
-            ["wtype", "-M", "ctrl", "v", "-m", "ctrl"],
+            ["dotool"],
+            input=b"key shift+insert\n",
             check=False,
             timeout=2,
+            capture_output=True,
         )
-        return r.returncode == 0
-    if shutil.which("ydotool"):
-        r = subprocess.run(
-            ["ydotool", "key", "29:1", "47:1", "47:0", "29:0"],
-            check=False,
-            timeout=2,
-        )
-        return r.returncode == 0
-    if env != "wayland" and shutil.which("xdotool"):
-        r = subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=False, timeout=2)
-        return r.returncode == 0
-    return False
+        if r.returncode == 0:
+            return True, "dotool Shift+Insert"
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return False, ""
+
+
+def _wtype_paste() -> tuple[bool, str]:
+    r = _run(["wtype", "-M", "shift", "-k", "insert", "-m", "shift"])
+    if _ok(r):
+        return True, "wtype Shift+Insert"
+    return False, ""
+
+
+def _xdotool_paste() -> tuple[bool, str]:
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return False, ""
+    r = _run(["xdotool", "key", "--clearmodifiers", "shift+Insert"])
+    if _ok(r):
+        return True, "xdotool Shift+Insert"
+    return False, ""
 
 
 def open_clip(item: ClipboardItem, name: str = "clip.txt") -> None:

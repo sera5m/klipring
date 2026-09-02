@@ -1,6 +1,6 @@
 pkgbase = klipring
 	pkgdesc = Radial Ctrl+V clipboard pie for KDE Plasma
-	pkgver = 0.1.6
+	pkgver = 0.1.7
 	pkgrel = 1
 	url = https://github.com/sera5m/klipring
 	install = klipring.install
@@ -11,10 +11,12 @@ pkgbase = klipring
 	depends = pyside6
 	depends = qt6-base
 	depends = qt6-wayland
-	optdepends = wtype: paste into the focused window on Wayland (recommended)
-	optdepends = ydotool: Wayland paste fallback
+	depends = wl-clipboard
+	optdepends = ydotool: paste into the focused window on KWin (recommended)
+	optdepends = dotool: paste injector fallback
+	optdepends = wtype: paste on compositors that implement virtual-keyboard (not KWin)
 	optdepends = xdotool: paste on X11
-	optdepends = wl-clipboard: extra clipboard sync
+	optdepends = kdotool: report the focused window name
 	optdepends = kate: open clips in the default KDE editor
 	optdepends = kwriteconfig6: auto-bind the Ctrl+V shortcut on first run
 	source = git+https://github.com/sera5m/klipring.git#branch=main
