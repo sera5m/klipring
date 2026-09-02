@@ -6,9 +6,6 @@ import re
 import shutil
 import subprocess
 
-from PySide6.QtCore import QPoint
-from PySide6.QtGui import QCursor
-
 TERMINALS = (
     "konsole",
     "org.kde.konsole",
@@ -51,51 +48,70 @@ def is_terminal(label: str) -> bool:
     return any(t in blob for t in TERMINALS)
 
 
-def mouse_location(fallback: QPoint | None = None) -> QPoint:
-    raw = _cmd(["kdotool", "getmouselocation"])
-    parsed = _parse_xy(raw)
+def is_self(label: str, window_id: str = "") -> bool:
+    blob = f"{label} {window_id}".lower()
+    return "klipring" in blob or "klip-ring" in blob
+
+
+def mouse_location(fallback=None):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QCursor
+
+    qt = QCursor.pos()
+    raw = _cmd(["kdotool", "getmouselocation", "--shell"]) or _cmd(["kdotool", "getmouselocation"])
+    parsed = parse_xy(raw)
     if parsed is not None:
-        return parsed
-    if fallback is not None and (fallback.x() > 0 or fallback.y() > 0):
+        pt = QPoint(parsed[0], parsed[1])
+        if _looks_swapped(pt, qt):
+            pt = qt
+        if not _is_origin(pt):
+            return pt
+    if not _is_origin(qt):
+        return qt
+    if fallback is not None and not _is_origin(fallback):
         return QPoint(fallback)
-    return QCursor.pos()
+    return qt if not _is_origin(qt) else (QPoint(fallback) if fallback is not None else qt)
+
+
+def _is_origin(p: QPoint) -> bool:
+    return p.x() == 0 and p.y() == 0
+
+
+def _looks_swapped(a: QPoint, b: QPoint) -> bool:
+    return a.x() == b.y() and a.y() == b.x() and a.x() != a.y() and abs(a.x()) > 8
 
 
 def activate_window(window_id: str) -> bool:
-    if not window_id:
+    if not window_id or is_self(window_id):
         return False
-    out = _cmd(["kdotool", "windowactivate", window_id])
-    return True if window_id else bool(out) or True
+    _cmd(["kdotool", "windowactivate", window_id])
+    _cmd(["kdotool", "windowactivate", "--sync", window_id])
+    return True
 
 
-def restore_pointer(pos: QPoint) -> str:
+def restore_pointer(pos) -> str:
+    from PySide6.QtGui import QCursor
+
+    if _is_origin(pos):
+        return "skip"
     QCursor.setPos(pos)
     if shutil.which("kdotool"):
-        _cmd(["kdotool", "mousemove", str(pos.x()), str(pos.y())])
-        _cmd(["kdotool", "mousemove", "--sync", str(pos.x()), str(pos.y())])
-    if shutil.which("ydotool"):
-        for args in (
-            ["ydotool", "mousemove", "--absolute", str(pos.x()), str(pos.y())],
-            ["ydotool", "mousemove", "-a", str(pos.x()), str(pos.y())],
-        ):
-            try:
-                r = subprocess.run(args, check=False, timeout=1, capture_output=True)
-                if r.returncode == 0:
-                    return "warp"
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+        _cmd(["kdotool", "mousemove", str(int(pos.x())), str(int(pos.y()))])
     return "qt"
 
 
-def _parse_xy(raw: str) -> QPoint | None:
+def parse_xy(raw: str) -> tuple[int, int] | None:
+    """Read labeled x/y only. Never assume the first two numbers (kdotool may print Y first)."""
     if not raw:
         return None
-    m = re.search(r"x[:\s=]+(-?\d+)\D+y[:\s=]+(-?\d+)", raw, re.I)
-    if m:
-        return QPoint(int(m.group(1)), int(m.group(2)))
-    nums = re.findall(r"-?\d+", raw)
-    if len(nums) >= 2:
-        return QPoint(int(nums[0]), int(nums[1]))
+    xm = re.search(r"(?:^|[\s,;])x[:\s=]+(-?\d+)", raw, re.I | re.M)
+    ym = re.search(r"(?:^|[\s,;])y[:\s=]+(-?\d+)", raw, re.I | re.M)
+    if xm and ym:
+        return int(xm.group(1)), int(ym.group(1))
+    xm = re.search(r"^X=([-\d]+)\s*$", raw, re.M)
+    ym = re.search(r"^Y=([-\d]+)\s*$", raw, re.M)
+    if xm and ym:
+        return int(xm.group(1)), int(ym.group(1))
     return None
 
 

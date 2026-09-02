@@ -23,6 +23,7 @@ from .focus import (
     activate_window,
     active_window_id,
     focused_window,
+    is_self,
     is_terminal,
     mouse_location,
     restore_pointer,
@@ -107,6 +108,9 @@ class KlipRingApp:
         self._target_win = "unknown window"
         self._target_id = ""
         self._saved_ptr = QPoint(0, 0)
+        self._ptr = QTimer()
+        self._ptr.setInterval(150)
+        self._ptr.timeout.connect(self._track_idle)
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         try:
@@ -117,9 +121,6 @@ class KlipRingApp:
         self._poll.setInterval(2500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
-        self._ptr = QTimer()
-        self._ptr.setInterval(150)
-        self._ptr.timeout.connect(self._track_pointer)
         self._ptr.start()
         self._start_watch()
         self.tray: QSystemTrayIcon | None = None
@@ -128,7 +129,7 @@ class KlipRingApp:
         self._register_dbus()
         self._maybe_register_shortcut()
         self._ingest_clipboard(force=True)
-        self._track_pointer()
+        self._track_idle()
 
     def _register_dbus(self) -> None:
         bus = QDBusConnection.sessionBus()
@@ -141,17 +142,24 @@ class KlipRingApp:
         )
         bus.registerService(APP_ID)
 
-    def _track_pointer(self) -> None:
+    def _track_idle(self) -> None:
+        if self.overlay.isVisible():
+            return
         pos = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else QCursor.pos())
-        if self._last_ptr.x() < 0:
-            self._last_ptr = QPoint(pos)
+        if self._last_ptr.x() < 0 or not looks_captured(pos.x(), pos.y(), self._last_ptr.x(), self._last_ptr.y()):
+            if not (pos.x() == 0 and pos.y() == 0):
+                self._last_ptr = QPoint(pos)
+        name = focused_window()
+        wid = active_window_id()
+        if is_self(name, wid):
             return
-        if looks_captured(pos.x(), pos.y(), self._last_ptr.x(), self._last_ptr.y()):
-            return
-        self._last_ptr = QPoint(pos)
+        if name and not name.startswith("unknown"):
+            self._target_win = name
+        if wid:
+            self._target_id = wid
 
     def pointer_target(self) -> QPoint:
-        kd = mouse_location(None)
+        kd = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
         last = self._last_ptr
         pos = kd
         if last.x() >= 0 and looks_captured(pos.x(), pos.y(), last.x(), last.y()):
@@ -175,10 +183,13 @@ class KlipRingApp:
     def show_overlay(self) -> None:
         if self.overlay.isVisible():
             return
-        self._track_pointer()
+        self._track_idle()
         self._saved_ptr = QPoint(self.pointer_target())
-        self._target_win = focused_window()
-        self._target_id = active_window_id()
+        if is_self(self._target_win, self._target_id):
+            self._target_win = focused_window()
+            self._target_id = active_window_id()
+            if is_self(self._target_win, self._target_id):
+                self._target_id = ""
         self._ingest_clipboard(force=True)
         self.overlay.popup(self._saved_ptr)
 
@@ -189,16 +200,31 @@ class KlipRingApp:
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        restore_pointer(self._saved_ptr)
-        activate_window(self._target_id)
-        QTimer.singleShot(90, lambda: self._finish_paste())
+        self._restore_target()
+        QTimer.singleShot(80, lambda: self._finish_paste(0))
 
-    def _finish_paste(self) -> None:
+    def _restore_target(self) -> None:
         restore_pointer(self._saved_ptr)
-        activate_window(self._target_id)
-        term = is_terminal(self._target_win)
+        if self._target_id and not is_self(self._target_id):
+            activate_window(self._target_id)
+
+    def _finish_paste(self, tries: int = 0) -> None:
+        now = focused_window()
+        if is_self(now) or is_self("", active_window_id()):
+            self._restore_target()
+            if tries < 10:
+                QTimer.singleShot(60, lambda: self._finish_paste(tries + 1))
+                return
+            self.buffer.mute(False)
+            QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+            self._notify(
+                "Not pasted",
+                f"Refused to paste into KlipRing.\nPrior target: {self._target_win or 'lost'}",
+            )
+            return
+        target = self._target_win if not is_self(self._target_win) else now
+        term = is_terminal(target)
         ok, how = send_paste(terminal=term)
-        target = self._target_win or focused_window()
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
         hint = "Ctrl+Shift+V" if term else "Shift+Insert"

@@ -62,7 +62,6 @@ class Overlay(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
-            | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.buffer = buffer
@@ -70,14 +69,12 @@ class Overlay(QWidget):
         self.on_drop = on_drop
         self.on_open = on_open
         self.on_save = on_save
+        self.setWindowTitle("KlipRing")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_X11DoNotAcceptFocus, True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.origin = QPoint(0, 0)
         self.target = QPoint(0, 0)
         self.selected = 0
@@ -114,7 +111,6 @@ class Overlay(QWidget):
         ox, oy = clamp_origin(
             raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
         )
-        side = int(2 * (radius + PAD) + 8)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
         self.selected = 0
@@ -122,29 +118,18 @@ class Overlay(QWidget):
         self._done = False
         self._saw_ctrl = False
         self._armed_at = time.monotonic()
-        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
-        self._apply_input_mask()
+        self.clearMask()
+        self.setGeometry(full)
         self._tick.start()
         self._chord.start()
         self.show()
         self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
         self.update()
 
     def _apply_input_mask(self) -> None:
-        """Solid disk under the cursor so the wheel owns the pointer immediately.
-        Outside the circle, clicks pass through to the app."""
-        ox = self.origin.x() - self.x()
-        oy = self.origin.y() - self.y()
-        outer = self._max_radius() + 12
-        self.setMask(
-            QRegion(
-                int(ox - outer),
-                int(oy - outer),
-                int(outer * 2),
-                int(outer * 2),
-                QRegion.RegionType.Ellipse,
-            )
-        )
+        self.clearMask()
 
     def _poll_chord(self) -> None:
         if self._done or not self.isVisible():
