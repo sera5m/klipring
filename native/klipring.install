@@ -1,15 +1,13 @@
 post_install() {
   echo ""
   echo "==> KlipRing"
-  echo "    Start it:        klipring   (or log out — autostart is installed)"
-  echo "    Do not run it in a terminal: Ctrl+C in that TTY is SIGINT, not copy."
-  echo "    Paste helper:    sudo pacman -S ydotool"
-  echo "                     (KWin has no virtual keyboard protocol; wtype will fail)"
+  echo "    Daemon (once):   klipring &  disown"
+  echo "                 or  systemctl --user enable --now klipring"
+  echo "    Ctrl+V pings the daemon over DBus. It does not start a new GUI."
   echo "    Bind the chord:  klipring --bind-shortcut"
-  echo "                     (writes ~/.config/kglobalshortcutsrc — no sudo)"
-  echo "    Then confirm:    System Settings → Keyboard → Shortcuts → KlipRing"
-  echo "    Default chord is Ctrl+V at the KWin layer. Ctrl+C is never stolen;"
-  echo "    copies are watched from the clipboard like Klipper."
+  echo "    Pointer helper:  sudo pacman -S kdotool"
+  echo "    Paste helper:    sudo pacman -S ydotool"
+  echo "    Do not Ctrl+C a foreground klipring — that kills the daemon."
   echo ""
 }
 
@@ -21,4 +19,5 @@ post_remove() {
   echo "==> KlipRing removed. Delete leftover state with:"
   echo "    rm -rf ~/.local/share/klipring ~/.config/klipring"
   echo "    rm -f ~/.local/share/applications/klipring-show.desktop"
+  echo "    systemctl --user disable --now klipring 2>/dev/null || true"
 }

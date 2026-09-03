@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
 from .capture import item_from_paths, snapshot
+from .focus import mouse_location
 from .geometry import DEFAULT_CAPACITY
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
@@ -104,6 +105,9 @@ class KlipRingApp:
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
         self._saved_ptr = QPoint(0, 0)
+        self._ptr = QTimer()
+        self._ptr.setInterval(200)
+        self._ptr.timeout.connect(self._track_idle)
         clip = QGuiApplication.clipboard()
         clip.dataChanged.connect(self._on_clipboard)
         try:
@@ -114,6 +118,7 @@ class KlipRingApp:
         self._poll.setInterval(2500)
         self._poll.timeout.connect(self._poll_clipboard)
         self._poll.start()
+        self._ptr.start()
         self._start_watch()
         self.tray: QSystemTrayIcon | None = None
         self.tray = self._make_tray()
@@ -133,15 +138,28 @@ class KlipRingApp:
         )
         bus.registerService(APP_ID)
 
+    def _track_idle(self) -> None:
+        if self.overlay.isVisible():
+            return
+        pos = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
+        if pos.x() == 0 and pos.y() == 0:
+            return
+        self._last_ptr = QPoint(pos)
+
     def pointer_target(self) -> QPoint:
-        return QCursor.pos()
+        if self._last_ptr.x() >= 0:
+            return QPoint(self._last_ptr)
+        pos = mouse_location(None)
+        if pos.x() == 0 and pos.y() == 0:
+            screen = QGuiApplication.primaryScreen()
+            return screen.availableGeometry().center() if screen else QPoint(0, 0)
+        return pos
 
     def show_overlay(self) -> None:
         if self.overlay.isVisible():
             return
-        ptr = QCursor.pos()
-        if ptr.x() == 0 and ptr.y() == 0:
-            return
+        self._track_idle()
+        ptr = self.pointer_target()
         self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
         self.overlay.popup(ptr)
@@ -288,12 +306,17 @@ class KlipRingApp:
     def stop(self) -> None:
         self._stopping = True
         self._poll.stop()
+        self._ptr.stop()
         for proc in (self._wl, self._wl_primary):
-            if proc is not None:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+            if proc is None:
+                continue
+            try:
+                proc.kill()
+                proc.waitForFinished(400)
+            except Exception:
+                pass
+        self._wl = None
+        self._wl_primary = None
 
     def _make_tray(self) -> QSystemTrayIcon:
         icon_path = Path("/usr/share/icons/hicolor/scalable/apps/klipring.svg")

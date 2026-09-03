@@ -1,8 +1,7 @@
-"""Register the show chord the way Plasma actually binds keys: a .desktop
-command shortcut + kglobalshortcutsrc. No sudo, no mouse grab, no stealing Ctrl+C.
+"""Ctrl+V is a KWin command shortcut that *pings* the tray daemon.
 
-Ctrl+C stays with the focused app. We only watch the clipboard.
-Ctrl+V is a KWin global shortcut so it opens the wheel instead of pasting.
+The daemon (klipring) stays in the tray and watches the clipboard.
+The shortcut runs `klipring --show`, which is a DBus Show() with no Qt window.
 """
 
 from __future__ import annotations

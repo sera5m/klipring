@@ -1,6 +1,6 @@
 # Maintainer: sera5m
 pkgname=klipring
-pkgver=0.1.18
+pkgver=0.1.19
 pkgrel=1
 pkgdesc="Radial Ctrl+V clipboard pie for KDE Plasma"
 arch=('any')
@@ -58,6 +58,8 @@ EOF
     "${pkgdir}/etc/xdg/autostart/klipring.desktop"
   install -Dm644 "${root}/share/dbus-1/services/org.klipring.App.service" \
     "${pkgdir}/usr/share/dbus-1/services/org.klipring.App.service"
+  install -Dm644 "${root}/share/systemd/user/klipring.service" \
+    "${pkgdir}/usr/lib/systemd/user/klipring.service"
   install -Dm755 "${root}/share/kio/servicemenus/klipring.desktop" \
     "${pkgdir}/usr/share/kio/servicemenus/klipring.desktop"
   install -Dm644 "${root}/share/icons/hicolor/scalable/apps/klipring.svg" \
