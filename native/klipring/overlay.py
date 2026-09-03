@@ -25,7 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from .buffer import ClipboardBuffer
-from .focus import move_window
+from .focus import move_owned_window
 from .pointer import clamp_origin
 from .geometry import (
     badge_for_index,
@@ -75,7 +75,9 @@ class Overlay(QWidget):
         self.on_drop = on_drop
         self.on_open = on_open
         self.on_save = on_save
-        self.setWindowTitle("KlipRing")
+        self._token = f"KlipRing_overlay_{os.getpid()}"
+        self._kwin_id = ""
+        self.setWindowTitle(self._token)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
@@ -134,11 +136,13 @@ class Overlay(QWidget):
         gen = self._gen
         self._alive.set()
         self._place(raw, box, radius)
+        self._unbind_parent()
         self._tick.start()
         self._chord.start()
         self._life.start()
         self.show()
         self.raise_()
+        self._unbind_parent()
         self._deny_grab()
         self.update()
         QTimer.singleShot(0, self._after_map)
@@ -177,13 +181,25 @@ class Overlay(QWidget):
         except Exception:
             pass
 
+    def _unbind_parent(self) -> None:
+        self.setParent(None)
+        wh = self.windowHandle()
+        if wh is None:
+            return
+        try:
+            wh.setTransientParent(None)
+        except Exception:
+            pass
+
     def _hub(self) -> tuple[float, float]:
         return self.width() / 2, self.height() / 2
 
     def _after_map(self) -> None:
-        """Wayland ignores Qt x,y. Ask KWin to put the small window on the cursor."""
         self._deny_grab()
-        move_window("KlipRing", self._want_x, self._want_y)
+        self._unbind_parent()
+        self._kwin_id = move_owned_window(
+            self._token, self._want_x, self._want_y, self._kwin_id
+        )
         self._apply_pass_through_mask()
         self.update()
 

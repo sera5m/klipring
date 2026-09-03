@@ -134,29 +134,43 @@ def activate_window(window_id: str) -> bool:
     return True
 
 
-def move_window(title: str, x: int, y: int) -> bool:
-    """Move only a window whose name/class is KlipRing. Never the focused app."""
+def move_owned_window(token: str, x: int, y: int, cached_id: str = "") -> str:
+    """Move the window whose title is exactly `token`. Never search by class.
+
+    Returns the verified id to cache, or "" if nothing was moved.
+    """
     exe = _resolve("kdotool")
-    if not exe:
-        return False
-    seen: list[str] = []
-    for args in (
-        [exe, "search", "--name", title],
-        [exe, "search", "--classname", "klipring"],
-        [exe, "search", "--class", "klipring"],
-    ):
-        blob = _cmd(args, timeout=1.0)
-        seen.extend(blob.split())
-    for wid in dict.fromkeys(seen):
-        if not wid or wid.lower() in {"none", "null", "0"}:
-            continue
-        name = _cmd([exe, "getwindowname", wid], timeout=0.8)
-        klass = _cmd([exe, "getwindowclassname", wid], timeout=0.8)
-        if not is_self(name, klass):
-            continue
-        _cmd([exe, "windowmove", wid, str(int(x)), str(int(y))], timeout=1.0)
-        return True
-    return False
+    if not exe or not token:
+        return ""
+    wid = cached_id.strip()
+    if wid and _window_title(exe, wid) != token:
+        wid = ""
+    if not wid:
+        wid = _find_id_by_exact_title(exe, token)
+    if not wid:
+        return ""
+    if _window_title(exe, wid) != token:
+        return ""
+    active = _cmd([exe, "getactivewindow"], timeout=0.8)
+    if active and active == wid and _window_title(exe, active) != token:
+        return ""
+    _cmd([exe, "windowmove", wid, str(int(x)), str(int(y))], timeout=1.0)
+    if _window_title(exe, wid) != token:
+        return ""
+    return wid
+
+
+def _window_title(exe: str, wid: str) -> str:
+    return _cmd([exe, "getwindowname", wid], timeout=0.8)
+
+
+def _find_id_by_exact_title(exe: str, token: str) -> str:
+    pattern = f"^{re.escape(token)}$"
+    blob = _cmd([exe, "search", "--name", pattern], timeout=1.0)
+    for cand in blob.split():
+        if cand and _window_title(exe, cand) == token:
+            return cand
+    return ""
 
 
 def parse_xy(raw: str) -> tuple[int, int] | None:
