@@ -43,8 +43,7 @@ class Bridge(QObject):
 
     @Slot(str)
     def ShowActivated(self, token: str) -> None:
-        if token:
-            os.environ["XDG_ACTIVATION_TOKEN"] = token
+        del token
         self._app.show_overlay()
 
     @Slot()
@@ -375,13 +374,12 @@ def _dbus_call(method: str, *args: object) -> bool:
 
 
 def _already_running_show() -> bool:
-    token = os.environ.get("XDG_ACTIVATION_TOKEN", "")
-    if token:
-        return _dbus_call("ShowActivated", token)
     return _dbus_call("Show")
 
 
 def run(argv: list[str]) -> int:
+    os.environ.pop("XDG_ACTIVATION_TOKEN", None)
+    os.environ.pop("DESKTOP_STARTUP_ID", None)
     QApplication.setApplicationName(APP_NAME)
     QApplication.setOrganizationName("klipring")
     QApplication.setDesktopFileName("klipring")

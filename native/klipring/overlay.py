@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
+import threading
 import time
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QMetaObject, QPoint, QRectF, Qt, QTimer, Slot
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -63,6 +65,7 @@ class Overlay(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
         self.buffer = buffer
@@ -74,9 +77,10 @@ class Overlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_X11DoNotAcceptFocus, True)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.origin = QPoint(0, 0)
         self.target = QPoint(0, 0)
         self.selected = 0
@@ -98,6 +102,9 @@ class Overlay(QWidget):
         self._done = False
         self._armed_at = 0.0
         self._saw_ctrl = False
+        self._press_hit: int | None = None
+        self._alive = threading.Event()
+        self._gen = 0
 
     def popup(self, pos: QPoint | None = None) -> None:
         if self.isVisible():
@@ -118,16 +125,54 @@ class Overlay(QWidget):
         self.v_down = True
         self._done = False
         self._saw_ctrl = False
+        self._press_hit = None
         self._armed_at = time.monotonic()
-        self.clearMask()
+        self._gen += 1
+        gen = self._gen
+        self._alive.set()
         self._place(raw, box, radius)
         self._tick.start()
         self._chord.start()
         self._life.start()
         self.show()
         self.raise_()
+        self._deny_grab()
         self.update()
-        QTimer.singleShot(0, lambda: self._reanchor(box, radius))
+        QTimer.singleShot(0, self._deny_grab)
+        QTimer.singleShot(32, self._deny_grab)
+        threading.Thread(target=self._watchdog, args=(gen,), name="klipring-watchdog", daemon=True).start()
+
+    def _watchdog(self, gen: int) -> None:
+        deadline = time.monotonic() + LIFE_MS / 1000.0
+        while time.monotonic() < deadline:
+            if not self._alive.is_set() or self._gen != gen:
+                return
+            time.sleep(0.2)
+        if not self._alive.is_set() or self._gen != gen:
+            return
+        QMetaObject.invokeMethod(self, "force_close", Qt.ConnectionType.QueuedConnection)
+        time.sleep(2.0)
+        if self._alive.is_set() and self._gen == gen:
+            os._exit(1)
+
+    @Slot()
+    def force_close(self) -> None:
+        self.dismiss(False)
+
+    def _deny_grab(self) -> None:
+        try:
+            self.releaseMouse()
+            self.releaseKeyboard()
+        except RuntimeError:
+            pass
+        wh = self.windowHandle()
+        if wh is None:
+            return
+        try:
+            wh.setMouseGrabEnabled(False)
+            wh.setKeyboardGrabEnabled(False)
+        except Exception:
+            pass
 
     def _place(self, raw: QPoint, box, radius: float) -> None:
         ox, oy = clamp_origin(
@@ -138,21 +183,6 @@ class Overlay(QWidget):
         self.origin = QPoint(int(ox), int(oy))
         self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
         self._apply_pass_through_mask()
-
-    def _reanchor(self, box, radius: float) -> None:
-        """One event-loop tick after map: Qt may now know the real cursor."""
-        if not self.isVisible():
-            return
-        pos = QCursor.pos()
-        if pos.x() == 0 and pos.y() == 0:
-            return
-        screen = QGuiApplication.screenAt(pos)
-        if screen is not None:
-            work = screen.availableGeometry()
-            if work.width() > 64 and work.height() > 64:
-                box = work
-        self._place(pos, box, radius)
-        self.update()
 
     def _apply_pass_through_mask(self) -> None:
         """Only the disk receives clicks; the rest of the seat stays with the OS."""
@@ -170,23 +200,18 @@ class Overlay(QWidget):
         )
 
     def _release_seat(self) -> None:
+        self._alive.clear()
         self._tick.stop()
         self._chord.stop()
         self._life.stop()
-        try:
-            self.releaseMouse()
-        except RuntimeError:
-            pass
-        try:
-            self.releaseKeyboard()
-        except RuntimeError:
-            pass
+        self._deny_grab()
 
     def dismiss(self, paste: bool = False) -> None:
         already = self._done
         self._done = True
         self._release_seat()
         self.hide()
+        self._deny_grab()
         if paste and not already and self.buffer.items:
             idx = max(0, min(self.selected, len(self.buffer.items) - 1))
             self.on_paste(idx)
@@ -466,22 +491,36 @@ class Overlay(QWidget):
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
+        dx = event.position().x() - ox
+        dy = event.position().y() - oy
+        hit = hit_index_at(dx, dy, len(self.buffer.items), self.inner, self.thick, self.gap)
+        if hit is not None:
+            self.selected = hit
+            self.update()
         if event.button() == Qt.MouseButton.MiddleButton:
+            self._press_hit = -2
+        elif event.button() == Qt.MouseButton.LeftButton:
+            self._press_hit = hit if hit is not None else (
+                -1 if math.hypot(dx, dy) <= self._max_radius() + 12 else -3
+            )
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        action = self._press_hit
+        self._press_hit = None
+        if event.button() == Qt.MouseButton.MiddleButton and action == -2:
             self.on_open(self.selected)
             self.dismiss(False)
             return
-        if event.button() == Qt.MouseButton.LeftButton:
-            ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
-            dx = event.position().x() - ox
-            dy = event.position().y() - oy
-            hit = hit_index_at(dx, dy, len(self.buffer.items), self.inner, self.thick, self.gap)
-            if hit is not None:
-                self.selected = hit
-                self.dismiss(True)
-            elif math.hypot(dx, dy) <= self._max_radius() + 12:
-                self.dismiss(True)
-            else:
-                self.dismiss(False)
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if action is None:
+            return
+        if action == -3:
+            self.dismiss(False)
+        else:
+            self.dismiss(True)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         n = len(self.buffer.items)

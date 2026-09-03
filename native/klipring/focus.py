@@ -133,12 +133,8 @@ def activate_window(window_id: str) -> bool:
 
 
 def restore_pointer(pos) -> str:
-    from PySide6.QtGui import QCursor
-
-    if _is_origin(pos):
-        return "skip"
-    QCursor.setPos(pos)
-    return "qt"
+    del pos
+    return "skip"
 
 
 def parse_xy(raw: str) -> tuple[int, int] | None:
