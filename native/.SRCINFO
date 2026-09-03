@@ -19,7 +19,7 @@ pkgbase = klipring
 	optdepends = kdotool: report the focused window name
 	optdepends = kate: open clips in the default KDE editor
 	optdepends = kwriteconfig6: auto-bind the Ctrl+V shortcut on first run
-	source = git+https://github.com/sera5m/klipring.git#branch=main
+	source = git+https://github.com/sera5m/klipring.git#tag=v0.1.19
 	sha256sums = SKIP
 
 pkgname = klipring

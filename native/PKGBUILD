@@ -23,7 +23,7 @@ if [[ -d "${startdir}/klipring" ]]; then
   source=()
   sha256sums=()
 else
-  source=("git+${url}.git#branch=main")
+  source=("git+${url}.git#tag=v${pkgver}")
   sha256sums=('SKIP')
 fi
 
