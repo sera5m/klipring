@@ -3,8 +3,6 @@ first copy forever, so wl-paste / Klipper are the source of truth."""
 
 from __future__ import annotations
 
-import html
-import re
 import shutil
 import subprocess
 import time
@@ -14,6 +12,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QClipboard, QGuiApplication
 
 from .buffer import ClipboardItem
+from .htmltext import html_to_text
 
 
 def snapshot(clip: QClipboard | None = None) -> ClipboardItem | None:
@@ -42,7 +41,7 @@ def snapshot_wl() -> ClipboardItem | None:
     if not text:
         html = _wl_paste(["-n", "--type", "text/html"])
         if html.strip():
-            text = _html_to_text(html)
+            text = html_to_text(html)
     if text:
         return _text_item(text)
     primary = _wl_paste(["-n", "-p"])
@@ -91,19 +90,10 @@ def snapshot_qt(clip: QClipboard | None = None) -> ClipboardItem | None:
             return _from_urls(urls)
         text = md.text() if md.hasText() else ""
         if not text and md.hasHtml():
-            text = _html_to_text(md.html())
+            text = html_to_text(md.html())
         if text:
             return _text_item(text)
     return None
-
-
-def _html_to_text(raw: str) -> str:
-    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", raw)
-    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
-    text = re.sub(r"(?i)</p>", "\n", text)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = html.unescape(text)
-    return " ".join(text.split()).strip()
 
 
 def _text_item(text: str) -> ClipboardItem:
