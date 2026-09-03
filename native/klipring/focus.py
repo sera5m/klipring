@@ -50,9 +50,15 @@ def is_terminal(label: str) -> bool:
     return any(t in blob for t in TERMINALS)
 
 
-def is_self(label: str, window_id: str = "") -> bool:
-    blob = f"{label} {window_id}".lower()
-    return "klipring" in blob or "klip-ring" in blob
+def pick_paste_target(history: list[tuple[str, str]]) -> tuple[str, str]:
+    """Last non-self window, then the one before that. Never KlipRing."""
+    for wid, name in reversed(history):
+        if wid and not is_self(name, wid):
+            return wid, name
+    for wid, name in reversed(history):
+        if name and not is_self(name, wid):
+            return wid, name
+    return "", ""
 
 
 GAMES = (

@@ -1,6 +1,6 @@
 pkgbase = klipring
 	pkgdesc = Radial Ctrl+V clipboard pie for KDE Plasma
-	pkgver = 0.1.24
+	pkgver = 0.1.25
 	pkgrel = 1
 	url = https://github.com/sera5m/klipring
 	install = klipring.install
@@ -19,7 +19,7 @@ pkgbase = klipring
 	optdepends = kdotool: AUR package — place the pie on the cursor under KWin (yay -S kdotool)
 	optdepends = kate: open clips in the default KDE editor
 	optdepends = kwriteconfig6: auto-bind the Ctrl+V shortcut on first run
-	source = git+https://github.com/sera5m/klipring.git#tag=v0.1.24
+	source = git+https://github.com/sera5m/klipring.git#tag=v0.1.25
 	sha256sums = SKIP
 
 pkgname = klipring

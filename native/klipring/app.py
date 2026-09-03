@@ -19,7 +19,14 @@ from PySide6.QtWidgets import (
 from . import APP_ID, APP_NAME, __version__
 from .buffer import ClipboardBuffer
 from .capture import item_from_paths, snapshot
-from .focus import mouse_location
+from .focus import (
+    activate_window,
+    active_window_id,
+    focused_window,
+    is_self,
+    mouse_location,
+    pick_paste_target,
+)
 from .geometry import DEFAULT_CAPACITY
 from .pointer import looks_captured
 from .overlay import Overlay
@@ -106,6 +113,7 @@ class KlipRingApp:
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
         self._saved_ptr = QPoint(0, 0)
+        self._focus_hist: list[tuple[str, str]] = []
         self._ptr = QTimer()
         self._ptr.setInterval(200)
         self._ptr.timeout.connect(self._track_idle)
@@ -143,9 +151,30 @@ class KlipRingApp:
         if self.overlay.isVisible():
             return
         pos = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
-        if pos.x() == 0 and pos.y() == 0:
+        if pos.x() != 0 or pos.y() != 0:
+            self._last_ptr = QPoint(pos)
+        self._remember_focus()
+
+    def _remember_focus(self) -> None:
+        wid = active_window_id()
+        name = focused_window()
+        if is_self(name, wid):
             return
-        self._last_ptr = QPoint(pos)
+        if not wid and not name:
+            return
+        if self._focus_hist and self._focus_hist[-1] == (wid, name):
+            return
+        self._focus_hist.append((wid, name))
+        self._focus_hist = self._focus_hist[-2:]
+
+    def show_overlay(self) -> None:
+        if self.overlay.isVisible():
+            return
+        self._remember_focus()
+        ptr = self.pointer_target()
+        self._saved_ptr = QPoint(ptr)
+        self._ingest_clipboard(force=True)
+        self.overlay.popup(ptr)
 
     def pointer_target(self) -> QPoint:
         live = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
@@ -160,25 +189,36 @@ class KlipRingApp:
         screen = QGuiApplication.primaryScreen()
         return screen.geometry().center() if screen else QPoint(0, 0)
 
-    def show_overlay(self) -> None:
-        if self.overlay.isVisible():
-            return
-        self._track_idle()
-        ptr = self.pointer_target()
-        self._saved_ptr = QPoint(ptr)
-        self._ingest_clipboard(force=True)
-        self.overlay.popup(ptr)
-
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
             return
         item = self.buffer.items[index]
+        wid, _name = pick_paste_target(self._focus_hist)
+        if wid:
+            activate_window(wid)
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        QTimer.singleShot(80, self._finish_paste)
+        QTimer.singleShot(80, lambda w=wid: self._finish_paste(w))
 
-    def _finish_paste(self) -> None:
+    def _finish_paste(self, wid: str = "") -> None:
+        target = wid
+        now_name = focused_window()
+        now_id = active_window_id()
+        if is_self(now_name, now_id):
+            older = self._focus_hist[:-1] if len(self._focus_hist) > 1 else []
+            target = pick_paste_target(older)[0] or pick_paste_target(self._focus_hist)[0]
+            if target:
+                activate_window(target)
+            now_name = focused_window()
+            now_id = active_window_id()
+        if is_self(now_name, now_id):
+            self.buffer.mute(False)
+            QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+            self._notify("Did not paste", "refused to paste into KlipRing")
+            return
+        if target:
+            activate_window(target)
         ok, how = send_paste()
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))

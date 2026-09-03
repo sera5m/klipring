@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from klipring.focus import is_self, parse_xy
+from klipring.focus import is_self, parse_xy, pick_paste_target
 
 
 class FocusTests(unittest.TestCase):
@@ -25,6 +25,17 @@ class FocusTests(unittest.TestCase):
         self.assertTrue(is_self("python3", "klipring"))
         self.assertFalse(is_self("Kate", "12345"))
         self.assertFalse(is_self("Konsole", "org.kde.konsole"))
+
+    def test_pick_paste_skips_self(self):
+        hist = [
+            ("aaa", "Kate"),
+            ("bbb", "KlipRing_overlay_1"),
+        ]
+        self.assertEqual(pick_paste_target(hist), ("aaa", "Kate"))
+
+    def test_pick_paste_prefers_latest_real(self):
+        hist = [("aaa", "Kate"), ("ccc", "Konsole")]
+        self.assertEqual(pick_paste_target(hist), ("ccc", "Konsole"))
 
 
 if __name__ == "__main__":

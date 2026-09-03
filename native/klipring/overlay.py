@@ -236,15 +236,36 @@ class Overlay(QWidget):
         self._life.stop()
         self._deny_grab()
 
-    def dismiss(self, paste: bool = False) -> None:
+    def dismiss(self, paste: bool = False, index: int | None = None) -> None:
         already = self._done
         self._done = True
         self._release_seat()
         self.hide()
         self._deny_grab()
         if paste and not already and self.buffer.items:
-            idx = max(0, min(self.selected, len(self.buffer.items) - 1))
+            idx = self.selected if index is None else index
+            idx = max(0, min(idx, len(self.buffer.items) - 1))
             self.on_paste(idx)
+
+    def _hit_from_event(self, event: QMouseEvent) -> int | None:
+        """Wedge under the cursor vs the hub in global space (ignores Qt's fake x,y)."""
+        n = len(self.buffer.items)
+        g = event.globalPosition()
+        hit = hit_index_at(
+            g.x() - self.origin.x(),
+            g.y() - self.origin.y(),
+            n,
+            self.inner,
+            self.thick,
+            self.gap,
+        )
+        if hit is not None:
+            return hit
+        ox, oy = self._hub()
+        pos = event.position()
+        return hit_index_at(
+            pos.x() - ox, pos.y() - oy, n, self.inner, self.thick, self.gap
+        )
 
     def hideEvent(self, event) -> None:
         self._release_seat()
@@ -527,39 +548,36 @@ class Overlay(QWidget):
             self.dismiss(False)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        ox, oy = self._hub()
-        hit = hit_index_at(
-            event.position().x() - ox,
-            event.position().y() - oy,
-            len(self.buffer.items),
-            self.inner,
-            self.thick,
-            self.gap,
-        )
+        hit = self._hit_from_event(event)
         if hit is not None and hit != self.selected:
             self.selected = hit
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        ox, oy = self._hub()
-        dx = event.position().x() - ox
-        dy = event.position().y() - oy
-        hit = hit_index_at(dx, dy, len(self.buffer.items), self.inner, self.thick, self.gap)
+        hit = self._hit_from_event(event)
         if hit is not None:
             self.selected = hit
             self.update()
+        g = event.globalPosition()
+        dist = math.hypot(g.x() - self.origin.x(), g.y() - self.origin.y())
         if event.button() == Qt.MouseButton.MiddleButton:
             self._press_hit = -2
         elif event.button() == Qt.MouseButton.LeftButton:
-            self._press_hit = hit if hit is not None else (
-                -1 if math.hypot(dx, dy) <= self._max_radius() + 12 else -3
-            )
+            if hit is not None:
+                self._press_hit = hit
+            elif dist <= self._max_radius() + 12:
+                self._press_hit = -1
+            else:
+                self._press_hit = -3
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         action = self._press_hit
         self._press_hit = None
+        hit = self._hit_from_event(event)
         if event.button() == Qt.MouseButton.MiddleButton and action == -2:
+            if hit is not None:
+                self.selected = hit
             self.on_open(self.selected)
             self.dismiss(False)
             return
@@ -567,10 +585,12 @@ class Overlay(QWidget):
             return
         if action is None:
             return
-        if action == -3:
+        if action == -3 and hit is None:
             self.dismiss(False)
-        else:
-            self.dismiss(True)
+            return
+        idx = hit if hit is not None else (action if action >= 0 else self.selected)
+        self.selected = idx
+        self.dismiss(True, index=idx)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         n = len(self.buffer.items)
