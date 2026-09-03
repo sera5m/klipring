@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QWidget
 
 from .buffer import ClipboardBuffer
 from .focus import move_owned_window
-from .pointer import clamp_origin
+from .pointer import clamp_origin, in_edge_band
 from .geometry import (
     badge_for_index,
     format_age,
@@ -167,8 +167,13 @@ class Overlay(QWidget):
         self.dismiss(False)
 
     def _deny_grab(self) -> None:
+        buttons = QGuiApplication.mouseButtons()
+        if not buttons:
+            try:
+                self.releaseMouse()
+            except RuntimeError:
+                pass
         try:
-            self.releaseMouse()
             self.releaseKeyboard()
         except RuntimeError:
             pass
@@ -176,7 +181,8 @@ class Overlay(QWidget):
         if wh is None:
             return
         try:
-            wh.setMouseGrabEnabled(False)
+            if not buttons:
+                wh.setMouseGrabEnabled(False)
             wh.setKeyboardGrabEnabled(False)
         except Exception:
             pass
@@ -314,8 +320,11 @@ class Overlay(QWidget):
         self.gap = 36.0 * scale
 
     def _fit_near_mouse(self, box, mouse: QPoint) -> None:
-        """Keep the hub on the cursor when possible: shrink before sliding."""
         self._fit_to(box.width(), box.height())
+        if in_edge_band(
+            mouse.x(), mouse.y(), box.left(), box.top(), box.right(), box.bottom()
+        ):
+            return
         r = self._max_radius()
         room = min(
             mouse.x() - box.left(),
@@ -562,13 +571,20 @@ class Overlay(QWidget):
         dist = math.hypot(g.x() - self.origin.x(), g.y() - self.origin.y())
         if event.button() == Qt.MouseButton.MiddleButton:
             self._press_hit = -2
-        elif event.button() == Qt.MouseButton.LeftButton:
-            if hit is not None:
-                self._press_hit = hit
-            elif dist <= self._max_radius() + 12:
-                self._press_hit = -1
-            else:
-                self._press_hit = -3
+            event.accept()
+            return
+        if event.button() != Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+        if hit is not None:
+            self.dismiss(True, index=hit)
+            event.accept()
+            return
+        if dist <= self._max_radius() + 12:
+            self.dismiss(True, index=self.selected)
+            event.accept()
+            return
+        self._press_hit = -3
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:

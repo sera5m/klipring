@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from klipring.pointer import clamp_origin, looks_captured, screen_center, shift_for_extent
+from klipring.pointer import clamp_origin, in_edge_band, looks_captured, screen_center, shift_for_extent
 
 
 class PointerTests(unittest.TestCase):
@@ -36,6 +36,16 @@ class PointerTests(unittest.TestCase):
         self.assertTrue(looks_captured(0, 0, 800, 600))
         self.assertFalse(looks_captured(0, 0, 10, 10))
         self.assertFalse(looks_captured(800, 600, 810, 590))
+
+    def test_outer_ten_percent_always_moves(self):
+        ox, oy = clamp_origin(2500, 700, 0, 0, 2560, 1440, radius=20, pad=0)
+        self.assertLessEqual(ox, 0.90 * 2560)
+        self.assertEqual(oy, 700)
+        ox, oy = clamp_origin(400, 1400, 0, 0, 2560, 1440, radius=20, pad=0)
+        self.assertEqual(ox, 400)
+        self.assertLessEqual(oy, 0.90 * 1440)
+        self.assertTrue(in_edge_band(2500, 700, 0, 0, 2560, 1440))
+        self.assertFalse(in_edge_band(800, 600, 0, 0, 2560, 1440))
 
 
 if __name__ == "__main__":

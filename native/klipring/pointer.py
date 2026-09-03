@@ -33,6 +33,38 @@ def shift_for_extent(mouse: float, low: float, high: float, radius: float) -> fl
     return mouse - (radius - remain_after)
 
 
+def in_edge_band(
+    x: float,
+    y: float,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    band: float = 0.10,
+) -> bool:
+    """True when the pointer is in the outer `band` of the screen on X or Y."""
+    w = right - left
+    h = bottom - top
+    if w <= 0 or h <= 0:
+        return False
+    nx = (x - left) / w
+    ny = (y - top) / h
+    return nx <= band or nx >= 1.0 - band or ny <= band or ny >= 1.0 - band
+
+
+def _pull_from_edge(mouse: float, low: float, high: float, band: float) -> float:
+    span = high - low
+    if span <= 0:
+        return mouse
+    inner_low = low + span * band
+    inner_high = high - span * band
+    if mouse < inner_low:
+        return inner_low
+    if mouse > inner_high:
+        return inner_high
+    return mouse
+
+
 def clamp_origin(
     x: float,
     y: float,
@@ -42,11 +74,14 @@ def clamp_origin(
     bottom: float,
     radius: float,
     pad: float = 18,
+    band: float = 0.10,
 ) -> tuple[float, float]:
     extent = radius + pad
+    gx = _pull_from_edge(x, left, right, band)
+    gy = _pull_from_edge(y, top, bottom, band)
     return (
-        shift_for_extent(x, left, right, extent),
-        shift_for_extent(y, top, bottom, extent),
+        shift_for_extent(gx, left, right, extent),
+        shift_for_extent(gy, top, bottom, extent),
     )
 
 
