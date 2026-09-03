@@ -5,7 +5,7 @@ post_install() {
   echo "                 or  systemctl --user enable --now klipring"
   echo "    Ctrl+V pings the daemon over DBus. It does not start a new GUI."
   echo "    Bind the chord:  klipring --bind-shortcut"
-  echo "    Pointer helper:  sudo pacman -S kdotool"
+  echo "    Pointer helper:  yay -S kdotool     (AUR, not pacman extra)"
   echo "    Paste helper:    sudo pacman -S ydotool"
   echo "    Do not Ctrl+C a foreground klipring — that kills the daemon."
   echo ""

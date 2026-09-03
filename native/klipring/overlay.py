@@ -66,10 +66,10 @@ class Overlay(QWidget):
             None,
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
             | Qt.WindowType.WindowDoesNotAcceptFocus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
+        self.setParent(None)
         self.buffer = buffer
         self.on_paste = on_paste
         self.on_drop = on_drop

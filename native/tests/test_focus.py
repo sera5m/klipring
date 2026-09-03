@@ -24,6 +24,7 @@ class FocusTests(unittest.TestCase):
         self.assertTrue(is_self("KlipRing"))
         self.assertTrue(is_self("python3", "klipring"))
         self.assertFalse(is_self("Kate", "12345"))
+        self.assertFalse(is_self("Konsole", "org.kde.konsole"))
 
 
 if __name__ == "__main__":

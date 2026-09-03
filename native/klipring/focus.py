@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 TERMINALS = (
     "konsole",
@@ -133,15 +135,28 @@ def activate_window(window_id: str) -> bool:
 
 
 def move_window(title: str, x: int, y: int) -> bool:
-    """Ask KWin to place a window. Qt cannot set x,y on Wayland."""
-    blob = _cmd(["kdotool", "search", "--name", title])
-    if not blob:
-        blob = _cmd(["kdotool", "search", "--class", "klipring"])
-    wid = (blob.split() or [""])[0]
-    if not wid:
+    """Move only a window whose name/class is KlipRing. Never the focused app."""
+    exe = _resolve("kdotool")
+    if not exe:
         return False
-    _cmd(["kdotool", "windowmove", wid, str(int(x)), str(int(y))])
-    return True
+    seen: list[str] = []
+    for args in (
+        [exe, "search", "--name", title],
+        [exe, "search", "--classname", "klipring"],
+        [exe, "search", "--class", "klipring"],
+    ):
+        blob = _cmd(args, timeout=1.0)
+        seen.extend(blob.split())
+    for wid in dict.fromkeys(seen):
+        if not wid or wid.lower() in {"none", "null", "0"}:
+            continue
+        name = _cmd([exe, "getwindowname", wid], timeout=0.8)
+        klass = _cmd([exe, "getwindowclassname", wid], timeout=0.8)
+        if not is_self(name, klass):
+            continue
+        _cmd([exe, "windowmove", wid, str(int(x)), str(int(y))], timeout=1.0)
+        return True
+    return False
 
 
 def parse_xy(raw: str) -> tuple[int, int] | None:
@@ -159,11 +174,35 @@ def parse_xy(raw: str) -> tuple[int, int] | None:
     return None
 
 
-def _cmd(args: list[str]) -> str:
-    if not shutil.which(args[0]):
+def _resolve(name: str) -> str:
+    found = shutil.which(name)
+    if found:
+        return found
+    extra = os.environ.get("PATH", "")
+    for folder in (
+        "/usr/bin",
+        "/usr/local/bin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".cargo" / "bin"),
+    ):
+        cand = Path(folder) / name
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+        if folder not in extra:
+            hit = shutil.which(name, path=folder)
+            if hit:
+                return hit
+    return ""
+
+
+def _cmd(args: list[str], timeout: float = 0.6) -> str:
+    exe = _resolve(args[0]) if args else ""
+    if not exe:
         return ""
     try:
-        r = subprocess.run(args, capture_output=True, timeout=0.4, check=False)
+        r = subprocess.run(
+            [exe, *args[1:]], capture_output=True, timeout=timeout, check=False
+        )
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return (r.stdout or b"").decode("utf-8", "replace").strip()
