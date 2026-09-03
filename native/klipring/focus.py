@@ -33,6 +33,38 @@ TERMINALS = (
 )
 
 
+def window_at_pointer() -> tuple[str, str]:
+    """Window under the cursor — what a webpage text box actually lives in."""
+    raw = _cmd(["kdotool", "getmouselocation"])
+    if not raw:
+        raw = _cmd(["kdotool", "getmouselocation", "--shell"])
+    wid = parse_window_id(raw)
+    if not wid:
+        return "", ""
+    name = _cmd(["kdotool", "getwindowname", wid])
+    klass = _cmd(["kdotool", "getwindowclassname", wid])
+    label = f"{name} ({klass})" if name and klass else (name or klass)
+    if is_self(label, wid):
+        return "", ""
+    return wid, label
+
+
+def parse_window_id(raw: str) -> str:
+    if not raw:
+        return ""
+    m = re.search(r"^WINDOW=(.+)$", raw, re.I | re.M)
+    if m:
+        wid = m.group(1).strip()
+        return "" if wid.lower() in {"none", "null", "0", "-1"} else wid
+    m = re.search(r"(?:^|[\s,;])window[:\s=]+(\S+)", raw, re.I | re.M)
+    if not m:
+        return ""
+    wid = m.group(1).strip().rstrip(",")
+    if wid.lower() in {"none", "null", "0", "-1"}:
+        return ""
+    return wid
+
+
 def focused_window() -> str:
     for fn in (_kdotool, _kwin_query, _kwin_active_output):
         name = fn()

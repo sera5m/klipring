@@ -1,5 +1,5 @@
 """KlipRing — radial clipboard pie for KDE Plasma."""
 
-__version__ = "0.1.27"
+__version__ = "0.1.28"
 APP_ID = "org.klipring.App"
 APP_NAME = "KlipRing"

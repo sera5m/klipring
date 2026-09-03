@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import signal
 import shutil
@@ -27,6 +28,7 @@ from .focus import (
     mouse_location,
     pick_paste_target,
     short_label,
+    window_at_pointer,
 )
 from .geometry import DEFAULT_CAPACITY
 from .pointer import looks_captured
@@ -118,6 +120,8 @@ class KlipRingApp:
         self._focus_cand: tuple[str, str] = ("", "")
         self._focus_hits = 0
         self._paste_lock: tuple[str, str] = ("", "")
+        self._notify_paste = True
+        self._load_settings()
         self._ptr = QTimer()
         self._ptr.setInterval(200)
         self._ptr.timeout.connect(self._track_idle)
@@ -183,7 +187,15 @@ class KlipRingApp:
         if self.overlay.isVisible():
             return
         self._remember_focus()
-        self._paste_lock = pick_paste_target(self._focus_hist)
+        under = window_at_pointer()
+        if under[0]:
+            self._paste_lock = under
+        else:
+            live = (active_window_id(), focused_window())
+            if live[0] and not is_self(live[1], live[0]):
+                self._paste_lock = live
+            else:
+                self._paste_lock = pick_paste_target(self._focus_hist)
         ptr = self.pointer_target()
         self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
@@ -240,7 +252,7 @@ class KlipRingApp:
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
         if ok:
-            self._notify("Pasted", f"via {how}")
+            self._notify("Pasted", f"into {short_label(self._paste_lock[1])} via {how}")
         else:
             self._notify(
                 "Clipboard set — not injected",
@@ -398,6 +410,11 @@ class KlipRingApp:
         bind = QAction(f"Bind {DEFAULT_CHORD} in KWin", menu)
         bind.triggered.connect(self._bind_shortcut)
         menu.addAction(bind)
+        notify = QAction("Notify on paste", menu)
+        notify.setCheckable(True)
+        notify.setChecked(self._notify_paste)
+        notify.toggled.connect(self._set_notify_paste)
+        menu.addAction(notify)
         menu.addSeparator()
         quit_act = QAction("Quit", menu)
         quit_act.triggered.connect(QApplication.instance().quit)
@@ -422,7 +439,28 @@ class KlipRingApp:
         n = len(self.buffer.items)
         self.tray.setToolTip(f"{APP_NAME} — {n}/{self.buffer.capacity}")
 
+    def _set_notify_paste(self, on: bool) -> None:
+        self._notify_paste = bool(on)
+        self._save_settings()
+
+    def _load_settings(self) -> None:
+        path = data_dir() / "settings.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        self._notify_paste = bool(data.get("notify_paste", True))
+
+    def _save_settings(self) -> None:
+        path = data_dir() / "settings.json"
+        path.write_text(
+            json.dumps({"notify_paste": self._notify_paste}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
     def _notify(self, title: str, body: str) -> None:
+        if title == "Pasted" and not self._notify_paste:
+            return
         if self.tray is None:
             return
         self.tray.showMessage(title, body, QSystemTrayIcon.MessageIcon.Information, 2200)
