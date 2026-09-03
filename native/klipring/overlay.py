@@ -253,7 +253,7 @@ class Overlay(QWidget):
         if paste and not already and self.buffer.items:
             idx = self.selected if index is None else index
             idx = max(0, min(idx, len(self.buffer.items) - 1))
-            self.on_paste(idx)
+            QTimer.singleShot(20, lambda i=idx: self.on_paste(i))
 
     def _hit_from_event(self, event: QMouseEvent) -> int | None:
         """Wedge under the cursor vs the hub in global space (ignores Qt's fake x,y)."""

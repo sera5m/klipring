@@ -4,7 +4,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from klipring.focus import is_browser, is_self, parse_window_id, parse_xy, pick_paste_target, short_label
+from klipring.focus import (
+    is_browser,
+    is_self,
+    is_self_target,
+    parse_window_id,
+    parse_xy,
+    pick_paste_target,
+    short_label,
+)
 
 
 class FocusTests(unittest.TestCase):
@@ -28,6 +36,17 @@ class FocusTests(unittest.TestCase):
         self.assertTrue(is_browser("Mozilla Firefox"))
         self.assertTrue(is_browser("GitHub — Mozilla Firefox"))
         self.assertFalse(is_browser("Kate"))
+
+    def test_self_target_never_ok(self):
+        self.assertTrue(
+            is_self_target(("x", "KlipRing_overlay_1"), "Kate", "aaa", ("", ""))
+        )
+        self.assertTrue(
+            is_self_target(("aaa", "Firefox"), "KlipRing", "k", ("k", "KlipRing"))
+        )
+        self.assertFalse(
+            is_self_target(("aaa", "Firefox"), "Firefox", "aaa", ("aaa", "Firefox"))
+        )
 
     def test_pick_paste_skips_self(self):
         hist = [

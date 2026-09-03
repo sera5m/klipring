@@ -26,6 +26,7 @@ from .focus import (
     focused_window,
     is_browser,
     is_self,
+    is_self_target,
     mouse_location,
     pick_paste_target,
     short_label,
@@ -121,6 +122,7 @@ class KlipRingApp:
         self._focus_cand: tuple[str, str] = ("", "")
         self._focus_hits = 0
         self._paste_lock: tuple[str, str] = ("", "")
+        self._wait_clip = None
         self._notify_paste = True
         self._load_settings()
         self._ptr = QTimer()
@@ -205,14 +207,83 @@ class KlipRingApp:
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
             return
+        if is_self(self._paste_lock[1], self._paste_lock[0]):
+            under = window_at_pointer()
+            if under[0] and not is_self(under[1], under[0]):
+                self._paste_lock = under
+            else:
+                self._refuse_self()
+                return
         item = self.buffer.items[index]
-        wid, _name = self._paste_lock
-        if not wid:
-            wid, _name = pick_paste_target(self._focus_hist)
         self._mute_clip = True
         self.buffer.mute(True)
         set_clipboard_item(item)
-        QTimer.singleShot(80, lambda w=wid: self._finish_paste(w))
+        self._wait_clip = item
+        QTimer.singleShot(30, lambda: self._wait_clipboard(0))
+
+    def _refuse_self(self) -> None:
+        self.buffer.mute(False)
+        QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        self._notify("somehow self is a target", "refused to paste into KlipRing")
+
+    def _self_blocks_paste(self) -> bool:
+        under = window_at_pointer()
+        return is_self_target(
+            self._paste_lock,
+            focused_window(),
+            active_window_id(),
+            under,
+        ) or self.overlay.isVisible()
+
+    def _wait_clipboard(self, n: int) -> None:
+        if self.overlay.isVisible() and n < 20:
+            QTimer.singleShot(30, lambda: self._wait_clipboard(n + 1))
+            return
+        if self._self_blocks_paste():
+            self._refuse_self()
+            return
+        item = self._wait_clip
+        if item is None:
+            self._refuse_self()
+            return
+        snap = snapshot()
+        matched = bool(snap) and (
+            snap.signature == item.signature
+            or snap.text == item.text
+            or bool(item.text and snap.text and item.text[:120] == snap.text[:120])
+        )
+        if not matched and n < 20:
+            set_clipboard_item(item)
+            QTimer.singleShot(40, lambda: self._wait_clipboard(n + 1))
+            return
+        self._deliver_paste()
+
+    def _deliver_paste(self) -> None:
+        if self._self_blocks_paste():
+            self._refuse_self()
+            return
+        label = self._paste_lock[1]
+        if is_browser(label):
+            refocus_caret()
+            QTimer.singleShot(70, self._inject_if_not_self)
+            return
+        target = self._paste_lock[0]
+        now_name = focused_window()
+        now_id = active_window_id()
+        under = window_at_pointer()
+        already = bool(target) and (now_id == target or under[0] == target)
+        if target and not already and not is_self(now_name, now_id):
+            activate_window(target)
+        if self._self_blocks_paste():
+            self._refuse_self()
+            return
+        self._inject_paste()
+
+    def _inject_if_not_self(self) -> None:
+        if self._self_blocks_paste():
+            self._refuse_self()
+            return
+        self._inject_paste()
 
     def pointer_target(self) -> QPoint:
         live = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
@@ -226,38 +297,6 @@ class KlipRingApp:
             return QPoint(last)
         screen = QGuiApplication.primaryScreen()
         return screen.geometry().center() if screen else QPoint(0, 0)
-
-    def _finish_paste(self, wid: str = "") -> None:
-        target = wid or self._paste_lock[0]
-        label = self._paste_lock[1]
-        now_name = focused_window()
-        now_id = active_window_id()
-        under = window_at_pointer()
-        already = bool(target) and (now_id == target or under[0] == target)
-        browser = is_browser(label) or is_browser(now_name)
-
-        if browser:
-            # windowactivate focuses Firefox's search bar. Click the page instead.
-            refocus_caret()
-            QTimer.singleShot(50, self._inject_paste)
-            return
-
-        if target and not already:
-            activate_window(target)
-            now_name = focused_window()
-            now_id = active_window_id()
-        if is_self(now_name, now_id):
-            older = pick_paste_target(self._focus_hist[:-1] if len(self._focus_hist) > 1 else [])
-            if older[0]:
-                activate_window(older[0])
-                now_name = focused_window()
-                now_id = active_window_id()
-        if is_self(now_name, now_id):
-            self.buffer.mute(False)
-            QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
-            self._notify("Did not paste", "refused to paste into KlipRing")
-            return
-        self._inject_paste()
 
     def _inject_paste(self) -> None:
         ok, how = send_paste()

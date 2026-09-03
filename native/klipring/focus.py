@@ -116,6 +116,21 @@ def is_self(label: str, window_id: str = "") -> bool:
     return "klipring" in blob or "klip-ring" in blob
 
 
+def is_self_target(
+    lock: tuple[str, str],
+    now_name: str,
+    now_id: str,
+    under: tuple[str, str] = ("", ""),
+) -> bool:
+    if is_self(lock[1], lock[0]):
+        return True
+    if under[0] and is_self(under[1], under[0]):
+        return True
+    if is_self(now_name, now_id) and (not under[0] or is_self(under[1], under[0])):
+        return True
+    return False
+
+
 def short_label(name: str) -> str:
     name = (name or "").strip()
     if not name or name.startswith("unknown"):
