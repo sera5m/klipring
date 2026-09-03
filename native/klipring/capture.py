@@ -3,6 +3,7 @@ first copy forever, so wl-paste / Klipper are the source of truth."""
 
 from __future__ import annotations
 
+import html
 import re
 import shutil
 import subprocess
@@ -96,16 +97,12 @@ def snapshot_qt(clip: QClipboard | None = None) -> ClipboardItem | None:
     return None
 
 
-def _html_to_text(html: str) -> str:
-    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+def _html_to_text(raw: str) -> str:
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", raw)
     text = re.sub(r"(?i)<br\s*/?>", "\n", text)
     text = re.sub(r"(?i)</p>", "\n", text)
     text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"&nbsp;", " ", text)
-    text = re.sub(r"&", "&", text)
-    text = re.sub(r"<", "<", text)
-    text = re.sub(r">", ">", text)
-    text = re.sub(r""", '"', text)
+    text = html.unescape(text)
     return " ".join(text.split()).strip()
 
 
