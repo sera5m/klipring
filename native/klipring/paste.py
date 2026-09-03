@@ -81,9 +81,16 @@ def send_paste(terminal: bool = False) -> tuple[bool, str]:
         _block_global_shortcuts(False)
 
 
-def send_ctrl_v() -> bool:
-    ok, _ = send_paste()
-    return ok
+def refocus_caret() -> bool:
+    """Left-click where the pointer already is. No warp. Restores webpage inputs."""
+    for args in (
+        ["ydotool", "click", "0xC0"],
+        ["ydotool", "click", "left"],
+    ):
+        r = _run(args)
+        if _ok(r):
+            return True
+    return False
 
 
 def _block_global_shortcuts(on: bool) -> None:

@@ -24,6 +24,7 @@ from .focus import (
     activate_window,
     active_window_id,
     focused_window,
+    is_browser,
     is_self,
     mouse_location,
     pick_paste_target,
@@ -33,7 +34,7 @@ from .focus import (
 from .geometry import DEFAULT_CAPACITY
 from .pointer import looks_captured
 from .overlay import Overlay
-from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
+from .paste import open_clip, refocus_caret, save_to_file, send_paste, set_clipboard_item
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
 
@@ -228,9 +229,20 @@ class KlipRingApp:
 
     def _finish_paste(self, wid: str = "") -> None:
         target = wid or self._paste_lock[0]
+        label = self._paste_lock[1]
         now_name = focused_window()
         now_id = active_window_id()
-        if is_self(now_name, now_id) and target:
+        under = window_at_pointer()
+        already = bool(target) and (now_id == target or under[0] == target)
+        browser = is_browser(label) or is_browser(now_name)
+
+        if browser:
+            # windowactivate focuses Firefox's search bar. Click the page instead.
+            refocus_caret()
+            QTimer.singleShot(50, self._inject_paste)
+            return
+
+        if target and not already:
             activate_window(target)
             now_name = focused_window()
             now_id = active_window_id()
@@ -238,7 +250,6 @@ class KlipRingApp:
             older = pick_paste_target(self._focus_hist[:-1] if len(self._focus_hist) > 1 else [])
             if older[0]:
                 activate_window(older[0])
-                target = older[0]
                 now_name = focused_window()
                 now_id = active_window_id()
         if is_self(now_name, now_id):
@@ -246,8 +257,9 @@ class KlipRingApp:
             QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
             self._notify("Did not paste", "refused to paste into KlipRing")
             return
-        if target:
-            activate_window(target)
+        self._inject_paste()
+
+    def _inject_paste(self) -> None:
         ok, how = send_paste()
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))

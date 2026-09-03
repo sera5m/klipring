@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from klipring.focus import is_self, parse_window_id, parse_xy, pick_paste_target, short_label
+from klipring.focus import is_browser, is_self, parse_window_id, parse_xy, pick_paste_target, short_label
 
 
 class FocusTests(unittest.TestCase):
@@ -25,6 +25,9 @@ class FocusTests(unittest.TestCase):
         self.assertTrue(is_self("python3", "klipring"))
         self.assertFalse(is_self("Kate", "12345"))
         self.assertFalse(is_self("Konsole", "org.kde.konsole"))
+        self.assertTrue(is_browser("Mozilla Firefox"))
+        self.assertTrue(is_browser("GitHub — Mozilla Firefox"))
+        self.assertFalse(is_browser("Kate"))
 
     def test_pick_paste_skips_self(self):
         hist = [

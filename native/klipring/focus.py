@@ -33,6 +33,30 @@ TERMINALS = (
 )
 
 
+BROWSERS = (
+    "firefox",
+    "mozilla",
+    "librewolf",
+    "floorp",
+    "zen-browser",
+    "zen",
+    "chromium",
+    "google-chrome",
+    "chrome",
+    "brave",
+    "vivaldi",
+    "opera",
+    "msedge",
+    "microsoft-edge",
+    "falkon",
+    "epiphany",
+    "qutebrowser",
+    "konqueror",
+    "midori",
+    "waterfox",
+)
+
+
 def window_at_pointer() -> tuple[str, str]:
     """Window under the cursor — what a webpage text box actually lives in."""
     raw = _cmd(["kdotool", "getmouselocation"])
@@ -80,6 +104,11 @@ def active_window_id() -> str:
 def is_terminal(label: str) -> bool:
     blob = (label or "").lower()
     return any(t in blob for t in TERMINALS)
+
+
+def is_browser(label: str) -> bool:
+    blob = (label or "").lower()
+    return any(b in blob for b in BROWSERS)
 
 
 def is_self(label: str, window_id: str = "") -> bool:
