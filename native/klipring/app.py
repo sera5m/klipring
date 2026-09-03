@@ -21,6 +21,7 @@ from .buffer import ClipboardBuffer
 from .capture import item_from_paths, snapshot
 from .focus import mouse_location
 from .geometry import DEFAULT_CAPACITY
+from .pointer import looks_captured
 from .overlay import Overlay
 from .paste import open_clip, save_to_file, send_paste, set_clipboard_item
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
@@ -147,13 +148,17 @@ class KlipRingApp:
         self._last_ptr = QPoint(pos)
 
     def pointer_target(self) -> QPoint:
-        if self._last_ptr.x() >= 0:
-            return QPoint(self._last_ptr)
-        pos = mouse_location(None)
-        if pos.x() == 0 and pos.y() == 0:
-            screen = QGuiApplication.primaryScreen()
-            return screen.availableGeometry().center() if screen else QPoint(0, 0)
-        return pos
+        live = mouse_location(self._last_ptr if self._last_ptr.x() >= 0 else None)
+        last = self._last_ptr
+        if last.x() >= 0 and looks_captured(live.x(), live.y(), last.x(), last.y()):
+            return QPoint(last)
+        if live.x() != 0 or live.y() != 0:
+            self._last_ptr = QPoint(live)
+            return live
+        if last.x() >= 0:
+            return QPoint(last)
+        screen = QGuiApplication.primaryScreen()
+        return screen.geometry().center() if screen else QPoint(0, 0)
 
     def show_overlay(self) -> None:
         if self.overlay.isVisible():

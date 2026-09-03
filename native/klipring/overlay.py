@@ -48,6 +48,7 @@ MUTED = QColor("#a8b0b4")
 GLASS = QColor(22, 18, 32, 150)
 CARD = QColor(28, 24, 40, 200)
 PAD = 28
+CLAMP_PAD = 8
 LIFE_MS = 45_000
 
 
@@ -111,15 +112,14 @@ class Overlay(QWidget):
             return
         raw = pos if pos is not None else QCursor.pos()
         screen = QGuiApplication.screenAt(raw) or QGuiApplication.primaryScreen()
-        work = screen.availableGeometry()
         full = screen.geometry()
         if not full.contains(raw):
             raw = QPoint(
                 min(max(raw.x(), full.left()), full.right()),
                 min(max(raw.y(), full.top()), full.bottom()),
             )
-        box = work if work.width() > 64 and work.height() > 64 else full
-        self._fit_to(box.width(), box.height())
+        box = full
+        self._fit_near_mouse(box, raw)
         radius = self._max_radius()
         self.selected = 0
         self.v_down = True
@@ -176,9 +176,9 @@ class Overlay(QWidget):
 
     def _place(self, raw: QPoint, box, radius: float) -> None:
         ox, oy = clamp_origin(
-            raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=PAD
+            raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=CLAMP_PAD
         )
-        side = int(2 * (radius + PAD) + 8)
+        side = int(2 * (radius + CLAMP_PAD) + 4)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
         self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
@@ -254,13 +254,31 @@ class Overlay(QWidget):
         self.thick = 140.0
         self.gap = 36.0
         max_r = self._max_radius()
-        budget = min(width, height) / 2 - PAD - 4
+        budget = min(width, height) / 2 - CLAMP_PAD - 4
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
         if scale < 0.2:
             scale = 0.2
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
         self.gap = 36.0 * scale
+
+    def _fit_near_mouse(self, box, mouse: QPoint) -> None:
+        """Keep the hub on the cursor when possible: shrink before sliding."""
+        self._fit_to(box.width(), box.height())
+        r = self._max_radius()
+        room = min(
+            mouse.x() - box.left(),
+            box.right() - mouse.x(),
+            mouse.y() - box.top(),
+            box.bottom() - mouse.y(),
+        ) - CLAMP_PAD
+        if room >= r:
+            return
+        if room > 72:
+            scale = room / r
+            self.inner *= scale
+            self.thick *= scale
+            self.gap *= scale
 
     def _kind_icon(self, kind: str) -> QIcon:
         cached = self._icons.get(kind)
