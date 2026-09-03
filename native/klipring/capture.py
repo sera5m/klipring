@@ -3,6 +3,7 @@ first copy forever, so wl-paste / Klipper are the source of truth."""
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import time
@@ -31,7 +32,16 @@ def snapshot_wl() -> ClipboardItem | None:
         urls = [u for u in urls if u.isValid()]
         if urls:
             return _from_urls(urls)
-    text = _wl_paste(["-n"])
+    text = (
+        _wl_paste(["-n"])
+        or _wl_paste(["-n", "--type", "text/plain"])
+        or _wl_paste(["-n", "--type", "TEXT"])
+        or _wl_paste(["-n", "--type", "UTF8_STRING"])
+    )
+    if not text:
+        html = _wl_paste(["-n", "--type", "text/html"])
+        if html.strip():
+            text = _html_to_text(html)
     if text:
         return _text_item(text)
     primary = _wl_paste(["-n", "-p"])
@@ -65,18 +75,38 @@ def snapshot_klipper() -> ClipboardItem | None:
 def snapshot_qt(clip: QClipboard | None = None) -> ClipboardItem | None:
     clip = clip or QGuiApplication.clipboard()
     try:
-        md = clip.mimeData()
+        modes = [QClipboard.Mode.Clipboard, QClipboard.Mode.Selection]
     except Exception:
-        return None
-    if md is None:
-        return None
-    urls = [u for u in md.urls() if u.isValid()] if md.hasUrls() else []
-    if urls:
-        return _from_urls(urls)
-    text = md.text() if md.hasText() else ""
-    if text:
-        return _text_item(text)
+        modes = [QClipboard.Mode.Clipboard]
+    for mode in modes:
+        try:
+            md = clip.mimeData(mode)
+        except Exception:
+            continue
+        if md is None:
+            continue
+        urls = [u for u in md.urls() if u.isValid()] if md.hasUrls() else []
+        if urls:
+            return _from_urls(urls)
+        text = md.text() if md.hasText() else ""
+        if not text and md.hasHtml():
+            text = _html_to_text(md.html())
+        if text:
+            return _text_item(text)
     return None
+
+
+def _html_to_text(html: str) -> str:
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</p>", "\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"&", "&", text)
+    text = re.sub(r"<", "<", text)
+    text = re.sub(r">", ">", text)
+    text = re.sub(r""", '"', text)
+    return " ".join(text.split()).strip()
 
 
 def _text_item(text: str) -> ClipboardItem:
@@ -93,7 +123,7 @@ def _wl_paste(args: list[str]) -> str:
         r = subprocess.run(
             ["wl-paste", *args],
             capture_output=True,
-            timeout=0.3,
+            timeout=0.8,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from klipring.focus import is_self, parse_xy, pick_paste_target
+from klipring.focus import is_self, parse_xy, pick_paste_target, short_label
 
 
 class FocusTests(unittest.TestCase):
@@ -36,6 +36,10 @@ class FocusTests(unittest.TestCase):
     def test_pick_paste_prefers_latest_real(self):
         hist = [("aaa", "Kate"), ("ccc", "Konsole")]
         self.assertEqual(pick_paste_target(hist), ("ccc", "Konsole"))
+
+    def test_short_label_app_after_dash(self):
+        self.assertEqual(short_label("readme.md — Kate"), "Kate")
+        self.assertEqual(short_label("Mozilla Firefox"), "Mozilla Firefox")
 
 
 if __name__ == "__main__":

@@ -55,6 +55,17 @@ def is_self(label: str, window_id: str = "") -> bool:
     return "klipring" in blob or "klip-ring" in blob
 
 
+def short_label(name: str) -> str:
+    name = (name or "").strip()
+    if not name or name.startswith("unknown"):
+        return "last app"
+    for sep in (" — ", " – ", " - "):
+        if sep in name:
+            name = name.split(sep)[-1].strip()
+            break
+    return name[:42]
+
+
 def pick_paste_target(history: list[tuple[str, str]]) -> tuple[str, str]:
     """Last non-self window, then the one before that. Never KlipRing."""
     for wid, name in reversed(history):

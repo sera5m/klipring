@@ -111,10 +111,12 @@ class Overlay(QWidget):
         self._gen = 0
         self._want_x = 0
         self._want_y = 0
+        self.target_name = ""
 
-    def popup(self, pos: QPoint | None = None) -> None:
+    def popup(self, pos: QPoint | None = None, target: str = "") -> None:
         if self.isVisible():
             return
+        self.target_name = target
         raw = pos if pos is not None else QCursor.pos()
         screen = QGuiApplication.screenAt(raw) or QGuiApplication.primaryScreen()
         full = screen.geometry()
@@ -487,12 +489,14 @@ class Overlay(QWidget):
             )
 
         p.setPen(PLASMA)
-        p.setFont(QFont("Noto Sans Mono", 10))
+        p.setFont(QFont("Noto Sans Mono", 9))
         label = f"{selected + 1}/{n}" if n else "0/0"
+        dest = self.target_name or "last app"
+        hint = f"{label}\n→ {dest}\nclick / V paste" if n else "empty — copy text or a file"
         p.drawText(
-            QRectF(ox - 70, oy - 34, 140, 48),
+            QRectF(ox - 86, oy - 42, 172, 58),
             Qt.AlignmentFlag.AlignCenter,
-            f"{label}\nrelease V to paste" if n else "empty — copy text or a file",
+            hint,
         )
         remain = max(0, math.ceil(LIFE_MS / 1000 - (time.monotonic() - self._armed_at)))
         p.setPen(MUTED)
@@ -573,18 +577,18 @@ class Overlay(QWidget):
             self._press_hit = -2
             event.accept()
             return
-        if event.button() != Qt.MouseButton.LeftButton:
+        if event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            if hit is not None:
+                self.dismiss(True, index=hit)
+                event.accept()
+                return
+            if dist <= self._max_radius() + 12:
+                self.dismiss(True, index=self.selected)
+                event.accept()
+                return
+            self._press_hit = -3
             event.accept()
             return
-        if hit is not None:
-            self.dismiss(True, index=hit)
-            event.accept()
-            return
-        if dist <= self._max_radius() + 12:
-            self.dismiss(True, index=self.selected)
-            event.accept()
-            return
-        self._press_hit = -3
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
@@ -597,7 +601,7 @@ class Overlay(QWidget):
             self.on_open(self.selected)
             self.dismiss(False)
             return
-        if event.button() != Qt.MouseButton.LeftButton:
+        if event.button() not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
             return
         if action is None:
             return
