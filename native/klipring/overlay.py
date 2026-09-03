@@ -107,6 +107,8 @@ class Overlay(QWidget):
         self._press_hit: int | None = None
         self._alive = threading.Event()
         self._gen = 0
+        self._want_x = 0
+        self._want_y = 0
 
     def popup(self, pos: QPoint | None = None) -> None:
         if self.isVisible():
@@ -175,16 +177,13 @@ class Overlay(QWidget):
         except Exception:
             pass
 
+    def _hub(self) -> tuple[float, float]:
+        return self.width() / 2, self.height() / 2
+
     def _after_map(self) -> None:
-        """Wayland ignores setGeometry x,y. Cover the output and paint the ring at the mouse."""
+        """Wayland ignores Qt x,y. Ask KWin to put the small window on the cursor."""
         self._deny_grab()
-        screen = QGuiApplication.screenAt(self.origin) or QGuiApplication.primaryScreen()
-        if screen is not None:
-            geo = screen.geometry()
-            if self.geometry() != geo:
-                self.setGeometry(geo)
-            if self.x() != geo.left() or self.y() != geo.top():
-                move_window("KlipRing", geo.left(), geo.top())
+        move_window("KlipRing", self._want_x, self._want_y)
         self._apply_pass_through_mask()
         self.update()
 
@@ -192,15 +191,17 @@ class Overlay(QWidget):
         ox, oy = clamp_origin(
             raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=CLAMP_PAD
         )
+        side = int(2 * (radius + CLAMP_PAD) + 4)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
-        self.setGeometry(box)
+        self._want_x = int(ox - side / 2)
+        self._want_y = int(oy - side / 2)
+        self.setGeometry(self._want_x, self._want_y, side, side)
         self._apply_pass_through_mask()
 
     def _apply_pass_through_mask(self) -> None:
         """Only the disk receives clicks; the rest of the seat stays with the OS."""
-        ox = self.origin.x() - self.x()
-        oy = self.origin.y() - self.y()
+        ox, oy = self._hub()
         r = self._max_radius() + 12
         self.setMask(
             QRegion(
@@ -287,11 +288,10 @@ class Overlay(QWidget):
         ) - CLAMP_PAD
         if room >= r:
             return
-        if room > 72:
-            scale = room / r
-            self.inner *= scale
-            self.thick *= scale
-            self.gap *= scale
+        scale = max(0.2, room / r)
+        self.inner *= scale
+        self.thick *= scale
+        self.gap *= scale
 
     def _kind_icon(self, kind: str) -> QIcon:
         cached = self._icons.get(kind)
@@ -315,8 +315,8 @@ class Overlay(QWidget):
         return icon
 
     def _draw_target_arrow(self, p: QPainter, ox: float, oy: float) -> None:
-        tx = self.target.x() - self.x()
-        ty = self.target.y() - self.y()
+        tx = self.target.x() - self._want_x
+        ty = self.target.y() - self._want_y
         dx = tx - ox
         dy = ty - oy
         dist = math.hypot(dx, dy)
@@ -345,8 +345,11 @@ class Overlay(QWidget):
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         items = self.buffer.items
-        ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
+        ox, oy = self._hub()
         n = len(items)
         rings = ring_count_for(max(1, n))
         selected = min(self.selected, n - 1) if n else 0
@@ -508,7 +511,7 @@ class Overlay(QWidget):
             self.dismiss(False)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
+        ox, oy = self._hub()
         hit = hit_index_at(
             event.position().x() - ox,
             event.position().y() - oy,
@@ -522,7 +525,7 @@ class Overlay(QWidget):
             self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        ox, oy = self.origin.x() - self.x(), self.origin.y() - self.y()
+        ox, oy = self._hub()
         dx = event.position().x() - ox
         dy = event.position().y() - oy
         hit = hit_index_at(dx, dy, len(self.buffer.items), self.inner, self.thick, self.gap)
