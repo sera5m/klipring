@@ -132,9 +132,16 @@ def activate_window(window_id: str) -> bool:
     return True
 
 
-def restore_pointer(pos) -> str:
-    del pos
-    return "skip"
+def move_window(title: str, x: int, y: int) -> bool:
+    """Ask KWin to place a window. Qt cannot set x,y on Wayland."""
+    blob = _cmd(["kdotool", "search", "--name", title])
+    if not blob:
+        blob = _cmd(["kdotool", "search", "--class", "klipring"])
+    wid = (blob.split() or [""])[0]
+    if not wid:
+        return False
+    _cmd(["kdotool", "windowmove", wid, str(int(x)), str(int(y))])
+    return True
 
 
 def parse_xy(raw: str) -> tuple[int, int] | None:

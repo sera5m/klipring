@@ -25,6 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from .buffer import ClipboardBuffer
+from .focus import move_window
 from .pointer import clamp_origin
 from .geometry import (
     badge_for_index,
@@ -138,8 +139,8 @@ class Overlay(QWidget):
         self.raise_()
         self._deny_grab()
         self.update()
-        QTimer.singleShot(0, self._deny_grab)
-        QTimer.singleShot(32, self._deny_grab)
+        QTimer.singleShot(0, self._after_map)
+        QTimer.singleShot(32, self._after_map)
         threading.Thread(target=self._watchdog, args=(gen,), name="klipring-watchdog", daemon=True).start()
 
     def _watchdog(self, gen: int) -> None:
@@ -174,14 +175,26 @@ class Overlay(QWidget):
         except Exception:
             pass
 
+    def _after_map(self) -> None:
+        """Wayland ignores setGeometry x,y. Cover the output and paint the ring at the mouse."""
+        self._deny_grab()
+        screen = QGuiApplication.screenAt(self.origin) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            geo = screen.geometry()
+            if self.geometry() != geo:
+                self.setGeometry(geo)
+            if self.x() != geo.left() or self.y() != geo.top():
+                move_window("KlipRing", geo.left(), geo.top())
+        self._apply_pass_through_mask()
+        self.update()
+
     def _place(self, raw: QPoint, box, radius: float) -> None:
         ox, oy = clamp_origin(
             raw.x(), raw.y(), box.left(), box.top(), box.right(), box.bottom(), radius, pad=CLAMP_PAD
         )
-        side = int(2 * (radius + CLAMP_PAD) + 4)
         self.target = raw
         self.origin = QPoint(int(ox), int(oy))
-        self.setGeometry(int(ox - side / 2), int(oy - side / 2), side, side)
+        self.setGeometry(box)
         self._apply_pass_through_mask()
 
     def _apply_pass_through_mask(self) -> None:

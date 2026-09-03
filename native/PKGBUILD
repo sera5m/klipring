@@ -1,6 +1,6 @@
 # Maintainer: sera5m
 pkgname=klipring
-pkgver=0.1.20
+pkgver=0.1.21
 pkgrel=1
 pkgdesc="Radial Ctrl+V clipboard pie for KDE Plasma"
 arch=('any')
