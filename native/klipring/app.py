@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QStandardPaths, Qt, QTimer, QUrl, Slot
 from PySide6.QtDBus import QDBusConnection, QDBusMessage
-from PySide6.QtGui import QAction, QCursor, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -117,7 +117,6 @@ class KlipRingApp:
         self._last_ptr = QPoint(-1, -1)
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
-        self._saved_ptr = QPoint(-1, -1)
         self._click_cache = QPoint(-1, -1)
         self._focus_hist: list[tuple[str, str]] = []
         self._focus_cand: tuple[str, str] = ("", "")
@@ -192,7 +191,6 @@ class KlipRingApp:
             return
         ptr = self.pointer_target()
         self._click_cache = QPoint(ptr)
-        self._saved_ptr = QPoint(ptr)
         self._remember_focus()
         under = window_at_pointer()
         if under[0]:
@@ -225,7 +223,6 @@ class KlipRingApp:
 
     def _forget_click_cache(self) -> None:
         self._click_cache = QPoint(-1, -1)
-        self._saved_ptr = QPoint(-1, -1)
 
     def _refuse_self(self) -> None:
         self.buffer.mute(False)

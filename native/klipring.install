@@ -7,6 +7,7 @@ post_install() {
   echo "    Bind the chord:  klipring --bind-shortcut"
   echo "    Pointer helper:  yay -S kdotool     (AUR, not pacman extra)"
   echo "    Paste helper:    sudo pacman -S ydotool"
+  echo "    Tray: uncheck Notify on paste to silence toasts."
   echo "    Do not Ctrl+C a foreground klipring — that kills the daemon."
   echo ""
 }

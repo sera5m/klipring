@@ -1,88 +1,62 @@
 # KlipRing
 
-Radial clipboard pie for **KDE Plasma 6** on Arch / EndeavourOS.
+Radial clipboard pie for **KDE Plasma 6** (Wayland) on Arch / EndeavourOS.
 
-Hold **Ctrl+V** (a KWin global shortcut, not a mouse grab). A hollow purple ring opens on the cursor. Hover a slice, click it or press Enter — it pastes **once** into the focused window.
+Hold **Ctrl+V**. A hollow purple ring opens on the cursor. Hover or click a slice — it pastes once into the window under the pointer.
 
-**Ctrl+C is never stolen.** Copies are watched from the system clipboard the same way Klipper does. If you run `klipring` in a terminal, Ctrl+C is SIGINT — use the tray/autostart instead.
+**Ctrl+C is never stolen.** Copies are watched with `wl-paste` (text, files, folders). Each slice has a type icon; the pie layout does not change.
 
-Copies of **text, files, and folders** are watched (not only Qt text). Each slice gets a type icon (document / file / folder). The pie layout is unchanged.
-
-On a dual-monitor Plasma/Wayland box the ring stays on the active screen: if you invoke it near the bottom it slides up, a small hub arrow points at the real cursor, and a captured/0,0 pointer falls back to the last real mouse position (or the screen center).
-
-This is the native daemon (`native/`). The web UI in `src/` is a browser prototype, not what you install.
-
-## Install on EndeavourOS / Arch
+## Install
 
 ```bash
-sudo pacman -S --needed git pyside6 qt6-wayland wtype
+sudo pacman -S --needed git pyside6 qt6-wayland wl-clipboard ydotool
+yay -S kdotool          # AUR — places the pie on the cursor
 git clone https://github.com/sera5m/klipring.git
 cd klipring/native
 makepkg -si
-```
-
-Then:
-
-```bash
-klipring
-```
-
-A tray icon appears. Log out/in and it autostarts.
-
-### Bind Ctrl+V (KWin, no sudo)
-
-EndeavourOS/Plasma binds chords through **KGlobalAccel**, not by grabbing the pointer.
-
-```bash
+systemctl --user enable --now klipring
 klipring --bind-shortcut
 ```
 
-That writes `~/.local/share/applications/klipring-show.desktop` and `~/.config/kglobalshortcutsrc`, then runs `kbuildsycoca6`. Confirm under **System Settings → Keyboard → Shortcuts → KlipRing**.
-
-Ctrl+V at that layer *replaces* in-app paste (that's the point of the wheel). Leave it as Meta+Shift+V in those settings if you want normal Ctrl+V paste kept.
-
-Install `wtype` so selecting a slice can inject Ctrl+V into the window you were in:
-
-```bash
-sudo pacman -S wtype
-```
-
-### Submit to AUR (optional)
-
-You need an [AUR account](https://aur.archlinux.org) and SSH key.
-
-```bash
-git clone ssh://aur@aur.archlinux.org/klipring.git aur-klipring
-cp native/PKGBUILD native/klipring.install LICENSE aur-klipring/
-cd aur-klipring
-makepkg --printsrcinfo > .SRCINFO
-git add PKGBUILD .SRCINFO klipring.install
-git commit -m "Initial import: klipring 0.1.0"
-git push
-```
-
-Then `yay -S klipring`.
-
-Until that push, install from the GitHub clone with `makepkg -si` as above.
+Do not run `klipring` in a foreground terminal (Ctrl+C kills the daemon). Use the user service or tray.
 
 ## Use
 
 | Input | Action |
 |---|---|
-| Ctrl+V (KWin shortcut) | Open pie on cursor |
-| Hover a wedge | Select that clip |
-| Click a wedge / Enter | Paste once |
-| Scroll / arrows / 1–9 / 0 | Walk slots |
-| Release V (if the overlay has focus) | Paste once |
+| Ctrl+V | Open pie on cursor |
+| Hover / 1–9 / 0 / arrows / scroll | Select a clip |
+| Left- or right-click a wedge | Paste that clip and close |
+| Enter / release V | Paste the highlighted clip |
 | Delete | Drop slot |
 | Middle-click | Open in Kate |
-| S | Save as .txt |
-| Esc | Close without pasting |
+| S | Save as `.txt` |
+| Esc / click off the ring | Close without pasting |
 
-Inner ring is 8 slots. Outer rings are 12, 16, 20. Positions never reflow.
+Inner ring is 8 slots. Outer rings are 12, 16, 20. Most-recent is always slot 1.
 
-Buffer lives in `~/.local/share/klipring/buffer.json`.
+Buffer: `~/.local/share/klipring/buffer.json`
 
 ## Tray
 
-Right-click the tray icon to set capacity (8 / 20 / 36 / 56) or quit.
+- Open clip ring
+- Capacity 8 / 20 / 36 / 56
+- Bind Ctrl+V in KWin
+- **Notify on paste** (off by default-toggle)
+- Quit
+
+## Notes
+
+- **ydotool** injects the paste. Enable `ydotoold` if your distro ships it.
+- **kdotool** is AUR (`yay -S kdotool`), not `pacman -S`.
+- Near a screen edge the pie slides inward; paste still clicks the pointer position from **before** the ring opened.
+- Firefox/Chrome page inputs usually work. Site chrome (YouTube/Twitter search bars) is inconsistent — that is the browser, not the ring. VS Code, Kate, Konsole are fine.
+- If the target would be KlipRing itself, paste is refused (`somehow self is a target`).
+
+## Uninstall leftover state
+
+```bash
+systemctl --user disable --now klipring
+rm -rf ~/.local/share/klipring ~/.config/klipring
+rm -f ~/.local/share/applications/klipring-show.desktop
+```
