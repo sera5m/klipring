@@ -6,6 +6,7 @@ there. Prefer ydotool (uinput) and block KGlobalAccel so Ctrl+V does not reopen 
 
 from __future__ import annotations
 
+import html
 import os
 import shutil
 import subprocess
@@ -32,6 +33,9 @@ def set_clipboard_item(item: ClipboardItem) -> None:
         md.setData("text/uri-list", QByteArray(("\r\n".join(item.uris) + "\r\n").encode("utf-8")))
     else:
         md.setText(item.text)
+        md.setHtml(
+            "<meta charset='utf-8'><pre>" + html.escape(item.text) + "</pre>"
+        )
     QGuiApplication.clipboard().setMimeData(md)
     _wl_copy(item)
 
@@ -39,17 +43,21 @@ def set_clipboard_item(item: ClipboardItem) -> None:
 def _wl_copy(item: ClipboardItem) -> None:
     if not shutil.which("wl-copy"):
         return
+    payload = (
+        ("\n".join(item.uris) + "\n").encode("utf-8")
+        if item.uris
+        else item.text.encode("utf-8")
+    )
+    mime = "text/uri-list" if item.uris else "text/plain"
     try:
-        if item.uris:
-            payload = ("\n".join(item.uris) + "\n").encode("utf-8")
+        subprocess.run(["wl-copy", "--clear"], check=False, timeout=1, capture_output=True)
+        for extra in ([], ["-p"]):
             subprocess.run(
-                ["wl-copy", "--type", "text/uri-list"],
+                ["wl-copy", *extra, "--type", mime],
                 input=payload,
                 check=False,
                 timeout=1,
             )
-        else:
-            subprocess.run(["wl-copy"], input=item.text.encode("utf-8"), check=False, timeout=1)
     except (OSError, subprocess.TimeoutExpired):
         pass
 
@@ -61,18 +69,24 @@ def _local_or_uri(uri: str) -> str:
     return local or uri
 
 
-def send_paste(terminal: bool = False) -> tuple[bool, str]:
-    """Inject paste without asking KWin who is focused."""
+def send_paste(terminal: bool = False, browser: bool = False) -> tuple[bool, str]:
+    """Inject paste. Browsers must use Ctrl+V — Shift+Insert hits PRIMARY / last page copy."""
     _block_global_shortcuts(True)
     try:
-        for fn in (
-            _ydotool_shift_insert,
-            _ydotool_ctrl_shift_v,
-            _ydotool_ctrl_v,
-            _dotool_paste,
-            _wtype_paste,
-            _xdotool_paste,
-        ):
+        if browser:
+            fns = (_ydotool_ctrl_v, _ydotool_ctrl_shift_v)
+        elif terminal:
+            fns = (_ydotool_ctrl_shift_v, _ydotool_ctrl_v, _ydotool_shift_insert)
+        else:
+            fns = (
+                _ydotool_shift_insert,
+                _ydotool_ctrl_shift_v,
+                _ydotool_ctrl_v,
+                _dotool_paste,
+                _wtype_paste,
+                _xdotool_paste,
+            )
+        for fn in fns:
             ok, how = fn()
             if ok:
                 return True, how

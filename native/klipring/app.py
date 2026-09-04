@@ -299,7 +299,7 @@ class KlipRingApp:
         return screen.geometry().center() if screen else QPoint(0, 0)
 
     def _inject_paste(self) -> None:
-        ok, how = send_paste()
+        ok, how = send_paste(browser=is_browser(self._paste_lock[1]))
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
         if ok:
