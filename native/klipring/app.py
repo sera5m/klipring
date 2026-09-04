@@ -35,7 +35,7 @@ from .focus import (
 from .geometry import DEFAULT_CAPACITY
 from .pointer import looks_captured
 from .overlay import Overlay
-from .paste import open_clip, refocus_caret, save_to_file, send_paste, set_clipboard_item
+from .paste import click_at, open_clip, save_to_file, send_paste, set_clipboard_item
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
 
@@ -117,7 +117,8 @@ class KlipRingApp:
         self._last_ptr = QPoint(-1, -1)
         self._wl: QProcess | None = None
         self._wl_primary: QProcess | None = None
-        self._saved_ptr = QPoint(0, 0)
+        self._saved_ptr = QPoint(-1, -1)
+        self._click_cache = QPoint(-1, -1)
         self._focus_hist: list[tuple[str, str]] = []
         self._focus_cand: tuple[str, str] = ("", "")
         self._focus_hits = 0
@@ -189,6 +190,9 @@ class KlipRingApp:
     def show_overlay(self) -> None:
         if self.overlay.isVisible():
             return
+        ptr = self.pointer_target()
+        self._click_cache = QPoint(ptr)
+        self._saved_ptr = QPoint(ptr)
         self._remember_focus()
         under = window_at_pointer()
         if under[0]:
@@ -199,8 +203,6 @@ class KlipRingApp:
                 self._paste_lock = live
             else:
                 self._paste_lock = pick_paste_target(self._focus_hist)
-        ptr = self.pointer_target()
-        self._saved_ptr = QPoint(ptr)
         self._ingest_clipboard(force=True)
         self.overlay.popup(ptr, target=short_label(self._paste_lock[1]))
 
@@ -221,9 +223,14 @@ class KlipRingApp:
         self._wait_clip = item
         QTimer.singleShot(30, lambda: self._wait_clipboard(0))
 
+    def _forget_click_cache(self) -> None:
+        self._click_cache = QPoint(-1, -1)
+        self._saved_ptr = QPoint(-1, -1)
+
     def _refuse_self(self) -> None:
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        QTimer.singleShot(75, self._forget_click_cache)
         self._notify("somehow self is a target", "refused to paste into KlipRing")
 
     def _self_blocks_paste(self) -> bool:
@@ -264,7 +271,9 @@ class KlipRingApp:
             return
         label = self._paste_lock[1]
         if is_browser(label):
-            refocus_caret()
+            cache = self._click_cache
+            if cache.x() >= 0 and cache.y() >= 0:
+                click_at(cache.x(), cache.y())
             QTimer.singleShot(70, self._inject_if_not_self)
             return
         target = self._paste_lock[0]
@@ -302,6 +311,7 @@ class KlipRingApp:
         ok, how = send_paste(browser=is_browser(self._paste_lock[1]))
         self.buffer.mute(False)
         QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        QTimer.singleShot(75, self._forget_click_cache)
         if ok:
             self._notify("Pasted", f"into {short_label(self._paste_lock[1])} via {how}")
         else:

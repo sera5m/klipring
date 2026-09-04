@@ -95,8 +95,28 @@ def send_paste(terminal: bool = False, browser: bool = False) -> tuple[bool, str
         _block_global_shortcuts(False)
 
 
+def click_at(x: int, y: int) -> bool:
+    """Move to a cached screen point, then left-click. Used after the pie has slid."""
+    if x < 0 or y < 0:
+        return False
+    sx, sy = str(int(x)), str(int(y))
+    moved = False
+    for args in (
+        ["ydotool", "mousemove", "--absolute", sx, sy],
+        ["ydotool", "mousemove", "-a", sx, sy],
+        ["ydotool", "mousemove", "--", sx, sy],
+    ):
+        r = _run(args)
+        if _ok(r):
+            moved = True
+            break
+    if not moved:
+        return False
+    return refocus_caret()
+
+
 def refocus_caret() -> bool:
-    """Left-click where the pointer already is. No warp. Restores webpage inputs."""
+    """Left-click where the pointer already is."""
     for args in (
         ["ydotool", "click", "0xC0"],
         ["ydotool", "click", "left"],
