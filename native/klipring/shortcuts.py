@@ -1,7 +1,6 @@
-"""Ctrl+V is a KWin command shortcut that *pings* the tray daemon.
+"""Alt+V is a KWin command shortcut that *pings* the tray daemon.
 
-The daemon (klipring) stays in the tray and watches the clipboard.
-The shortcut runs `klipring --show`, which is a DBus Show() with no Qt window.
+Ctrl+V stays with the app. Bind/unbind from the tray only.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from pathlib import Path
 
 DESKTOP_ID = "klipring-show.desktop"
 FRIENDLY = "KlipRing"
-DEFAULT_CHORD = "Ctrl+V"
+DEFAULT_CHORD = "Alt+V"
 ALT_CHORD = "Meta+Shift+V"
 
 _DESKTOP_BODY = """[Desktop Entry]

@@ -51,6 +51,7 @@ CARD = QColor(28, 24, 40, 200)
 PAD = 28
 CLAMP_PAD = 8
 LIFE_MS = 45_000
+MIN_SCALE = 0.25
 
 
 class Overlay(QWidget):
@@ -58,6 +59,7 @@ class Overlay(QWidget):
         self,
         buffer: ClipboardBuffer,
         on_paste: Callable[[int], None],
+        on_copy: Callable[[int], None],
         on_drop: Callable[[int], int],
         on_open: Callable[[int], None],
         on_save: Callable[[int], None],
@@ -72,6 +74,7 @@ class Overlay(QWidget):
         self.setParent(None)
         self.buffer = buffer
         self.on_paste = on_paste
+        self.on_copy = on_copy
         self.on_drop = on_drop
         self.on_open = on_open
         self.on_save = on_save
@@ -105,7 +108,7 @@ class Overlay(QWidget):
         self._icons: dict[str, QIcon] = {}
         self._done = False
         self._armed_at = 0.0
-        self._saw_ctrl = False
+        self._saw_mod = False
         self._press_hit: int | None = None
         self._alive = threading.Event()
         self._gen = 0
@@ -131,7 +134,7 @@ class Overlay(QWidget):
         self.selected = 0
         self.v_down = True
         self._done = False
-        self._saw_ctrl = False
+        self._saw_mod = False
         self._press_hit = None
         self._armed_at = time.monotonic()
         self._gen += 1
@@ -293,11 +296,18 @@ class Overlay(QWidget):
         if not self.isVisible():
             return
         mods = QGuiApplication.queryKeyboardModifiers()
-        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
-        if ctrl:
-            self._saw_ctrl = True
+        held = bool(
+            mods
+            & (
+                Qt.KeyboardModifier.AltModifier
+                | Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.MetaModifier
+            )
+        )
+        if held:
+            self._saw_mod = True
             return
-        if self._saw_ctrl and time.monotonic() - self._armed_at > 0.08:
+        if self._saw_mod and time.monotonic() - self._armed_at > 0.08:
             self.dismiss(True)
 
     def _max_radius(self) -> float:
@@ -315,8 +325,8 @@ class Overlay(QWidget):
         max_r = self._max_radius()
         budget = min(width, height) / 2 - CLAMP_PAD - 4
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
-        if scale < 0.2:
-            scale = 0.2
+        if scale < MIN_SCALE:
+            scale = MIN_SCALE
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
         self.gap = 36.0 * scale
@@ -336,7 +346,7 @@ class Overlay(QWidget):
         ) - CLAMP_PAD
         if room >= r:
             return
-        scale = max(0.2, room / r)
+        scale = max(MIN_SCALE, room / r)
         self.inner *= scale
         self.thick *= scale
         self.gap *= scale
@@ -492,7 +502,7 @@ class Overlay(QWidget):
         p.setFont(QFont("Noto Sans Mono", 9))
         label = f"{selected + 1}/{n}" if n else "0/0"
         dest = self.target_name or "last app"
-        hint = f"{label}\n→ {dest}\nclick / V paste" if n else "empty — copy text or a file"
+        hint = f"{label}\n→ {dest}\nL paste · R copy" if n else "empty — copy text or a file"
         p.drawText(
             QRectF(ox - 86, oy - 42, 172, 58),
             Qt.AlignmentFlag.AlignCenter,
@@ -557,7 +567,11 @@ class Overlay(QWidget):
             self.v_down = False
             self.dismiss(True)
             return
-        if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Meta) and not self.v_down:
+        if event.key() in (
+            Qt.Key.Key_Alt,
+            Qt.Key.Key_Control,
+            Qt.Key.Key_Meta,
+        ) and not self.v_down:
             self.dismiss(False)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -577,7 +591,19 @@ class Overlay(QWidget):
             self._press_hit = -2
             event.accept()
             return
-        if event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+        if event.button() == Qt.MouseButton.RightButton:
+            idx = hit if hit is not None else (
+                self.selected if dist <= self._max_radius() + 12 else None
+            )
+            if idx is not None:
+                self.selected = idx
+                self.on_copy(idx)
+                self.dismiss(False)
+            else:
+                self.dismiss(False)
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
             if hit is not None:
                 self.dismiss(True, index=hit)
                 event.accept()
@@ -601,7 +627,8 @@ class Overlay(QWidget):
             self.on_open(self.selected)
             self.dismiss(False)
             return
-        if event.button() not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
             return
         if action is None:
             return

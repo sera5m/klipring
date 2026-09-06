@@ -2,7 +2,7 @@
 
 Radial clipboard pie for **KDE Plasma 6** (Wayland) on Arch / EndeavourOS.
 
-Hold **Ctrl+V**. A hollow purple ring opens on the cursor. Hover or click a slice — it pastes once into the window under the pointer.
+Hold **Alt+V**. A hollow purple ring opens on the cursor. Hover or left-click a slice — it pastes once into the window under the pointer. **Ctrl+V stays normal paste.**
 
 **Ctrl+C is never stolen.** Copies are watched with `wl-paste` (text, files, folders). Each slice has a type icon; the pie layout does not change.
 
@@ -15,7 +15,7 @@ git clone https://github.com/sera5m/klipring.git
 cd klipring/native
 makepkg -si
 systemctl --user enable --now klipring
-klipring --bind-shortcut
+# then from the tray: Bind Alt+V in KWin
 ```
 
 Do not run `klipring` in a foreground terminal (Ctrl+C kills the daemon). Use the user service or tray.
@@ -24,9 +24,10 @@ Do not run `klipring` in a foreground terminal (Ctrl+C kills the daemon). Use th
 
 | Input | Action |
 |---|---|
-| Ctrl+V | Open pie on cursor |
+| Alt+V | Open pie on cursor |
 | Hover / 1–9 / 0 / arrows / scroll | Select a clip |
-| Left- or right-click a wedge | Paste that clip and close |
+| Left-click a wedge | Paste that clip and close |
+| Right-click a wedge | Put it on the system clipboard (then Ctrl+V) |
 | Enter / release V | Paste the highlighted clip |
 | Delete | Drop slot |
 | Middle-click | Open in Kate |
@@ -41,7 +42,7 @@ Buffer: `~/.local/share/klipring/buffer.json`
 
 - Open clip ring
 - Capacity 8 / 20 / 36 / 56
-- Bind Ctrl+V in KWin
+- Bind **Alt+V** in KWin (does not steal Ctrl+V)
 - **Notify on paste** (off by default-toggle)
 - Quit
 

@@ -105,6 +105,7 @@ class KlipRingApp:
         self.overlay = Overlay(
             self.buffer,
             on_paste=self.paste_index,
+            on_copy=self.copy_index,
             on_drop=self.drop_index,
             on_open=self.open_index,
             on_save=self.save_index,
@@ -203,6 +204,17 @@ class KlipRingApp:
                 self._paste_lock = pick_paste_target(self._focus_hist)
         self._ingest_clipboard(force=True)
         self.overlay.popup(ptr, target=short_label(self._paste_lock[1]))
+
+    def copy_index(self, index: int) -> None:
+        if not (0 <= index < len(self.buffer.items)):
+            return
+        item = self.buffer.items[index]
+        self._mute_clip = True
+        self.buffer.mute(True)
+        set_clipboard_item(item)
+        QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        QTimer.singleShot(250, lambda: self.buffer.mute(False))
+        self._notify("On clipboard", "Ctrl+V pastes this clip in the app")
 
     def paste_index(self, index: int) -> None:
         if not (0 <= index < len(self.buffer.items)):
@@ -525,14 +537,18 @@ class KlipRingApp:
 
     def _maybe_register_shortcut(self) -> None:
         marker = data_dir() / "shortcut-registered"
-        if marker.exists():
+        if not marker.exists():
+            return
+        old = marker.read_text(encoding="utf-8").strip()
+        if old == DEFAULT_CHORD:
             return
         chord = bind_shortcut(DEFAULT_CHORD)
         marker.write_text(chord, encoding="utf-8")
 
     def _bind_shortcut(self) -> None:
         chord = bind_shortcut(DEFAULT_CHORD)
-        self._notify("Shortcut", f"{chord} registered in KWin. Check System Settings → Shortcuts → KlipRing.")
+        (data_dir() / "shortcut-registered").write_text(chord, encoding="utf-8")
+        self._notify("Shortcut", f"{chord} registered in KWin. Ctrl+V stays with the app.")
 
 
 def _dbus_call(method: str, *args: object) -> bool:
@@ -580,7 +596,8 @@ def run(argv: list[str]) -> int:
 
     if bind_only:
         chord = bind_shortcut(DEFAULT_CHORD)
-        print(f"Registered {chord} via KGlobalAccel (no sudo).")
+        (data_dir() / "shortcut-registered").write_text(chord, encoding="utf-8")
+        print(f"Registered {chord} via KGlobalAccel (no sudo). Ctrl+V is unchanged.")
         print("System Settings → Keyboard → Shortcuts → KlipRing if it does not fire yet.")
         return 0
     if show_only and _already_running_show():
@@ -626,7 +643,7 @@ def run(argv: list[str]) -> int:
     if show_only:
         QTimer.singleShot(50, host.show_overlay)
     elif not copy_paths and not paste_dest:
-        host._notify(APP_NAME, "In the tray. Bind Ctrl+V via the tray menu or: klipring --bind-shortcut")
+        host._notify(APP_NAME, f"In the tray. Bind {DEFAULT_CHORD} from the tray menu.")
     try:
         return qapp.exec()
     except KeyboardInterrupt:

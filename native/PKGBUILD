@@ -1,8 +1,8 @@
 # Maintainer: sera5m
 pkgname=klipring
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
-pkgdesc="Radial Ctrl+V clipboard pie for KDE Plasma"
+pkgdesc="Radial Alt+V clipboard pie for KDE Plasma"
 arch=('any')
 url='https://github.com/sera5m/klipring'
 license=('MIT')
@@ -14,7 +14,7 @@ optdepends=(
   'xdotool: paste on X11'
   'kdotool: AUR package — place the pie on the cursor under KWin (yay -S kdotool)'
   'kate: open clips in the default KDE editor'
-  'kwriteconfig6: auto-bind the Ctrl+V shortcut on first run'
+  'kwriteconfig6: bind Alt+V from the tray'
 )
 makedepends=('git')
 install=klipring.install
