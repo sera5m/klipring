@@ -15,13 +15,28 @@ from pathlib import Path
 
 from .buffer import ClipboardItem
 
+_IMAGE_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+}
+
 
 def set_clipboard_item(item: ClipboardItem) -> None:
     from PySide6.QtCore import QByteArray, QMimeData, QUrl
     from PySide6.QtGui import QGuiApplication
 
     md = QMimeData()
-    if item.uris:
+    image = _image_bytes(item)
+    if image is not None:
+        mime, raw, path = image
+        md.setUrls([QUrl.fromLocalFile(str(path))])
+        md.setText(str(path))
+        md.setData(mime, QByteArray(raw))
+    elif item.uris:
         urls = [QUrl(u) for u in item.uris]
         md.setUrls(urls)
         listed = "\n".join(item.uris)
@@ -43,12 +58,39 @@ def set_clipboard_item(item: ClipboardItem) -> None:
 def _wl_copy(item: ClipboardItem) -> None:
     if not shutil.which("wl-copy"):
         return
+    image = _image_bytes(item)
+    if image is not None:
+        mime, raw, _path = image
+        _offer(mime, raw)
+        return
     payload = (
         ("\n".join(item.uris) + "\n").encode("utf-8")
         if item.uris
         else item.text.encode("utf-8")
     )
     mime = "text/uri-list" if item.uris else "text/plain"
+    _offer(mime, payload)
+
+
+def _image_bytes(item: ClipboardItem) -> tuple[str, bytes, Path] | None:
+    if not item.uris:
+        return None
+    from PySide6.QtCore import QUrl
+
+    path = Path(QUrl(item.uris[0]).toLocalFile())
+    mime = _IMAGE_MIME.get(path.suffix.lower())
+    if mime is None or not path.is_file():
+        return None
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    return mime, raw, path
+
+
+def _offer(mime: str, payload: bytes) -> None:
     try:
         subprocess.run(["wl-copy", "--clear"], check=False, timeout=1, capture_output=True)
         for extra in ([], ["-p"]):

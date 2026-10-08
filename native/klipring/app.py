@@ -125,7 +125,9 @@ class KlipRingApp:
         self._paste_lock: tuple[str, str] = ("", "")
         self._wait_clip = None
         self._notify_paste = True
+        self.min_scale = 0.35
         self._load_settings()
+        self.overlay.set_min_scale(self.min_scale)
         self._ptr = QTimer()
         self._ptr.setInterval(200)
         self._ptr.timeout.connect(self._track_idle)
@@ -485,6 +487,10 @@ class KlipRingApp:
         notify.setChecked(self._notify_paste)
         notify.toggled.connect(self._set_notify_paste)
         menu.addAction(notify)
+        for scale in (0.35, 0.5, 0.7, 1.0):
+            act = QAction(f"Min ring scale {scale}", menu)
+            act.triggered.connect(lambda _=False, s=scale: self._set_min_scale(s))
+            menu.addAction(act)
         menu.addSeparator()
         quit_act = QAction("Quit", menu)
         quit_act.triggered.connect(QApplication.instance().quit)
@@ -513,6 +519,12 @@ class KlipRingApp:
         self._notify_paste = bool(on)
         self._save_settings()
 
+    def _set_min_scale(self, value: float) -> None:
+        self.min_scale = float(value)
+        self.overlay.set_min_scale(self.min_scale)
+        self._save_settings()
+        self._notify("Ring scale", f"floor {self.overlay.min_scale}")
+
     def _load_settings(self) -> None:
         path = data_dir() / "settings.json"
         try:
@@ -520,11 +532,19 @@ class KlipRingApp:
         except (OSError, json.JSONDecodeError):
             return
         self._notify_paste = bool(data.get("notify_paste", True))
+        try:
+            self.min_scale = float(data.get("min_scale", self.min_scale))
+        except (TypeError, ValueError):
+            pass
 
     def _save_settings(self) -> None:
         path = data_dir() / "settings.json"
         path.write_text(
-            json.dumps({"notify_paste": self._notify_paste}, indent=2) + "\n",
+            json.dumps(
+                {"notify_paste": self._notify_paste, "min_scale": self.min_scale},
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
 

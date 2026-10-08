@@ -51,7 +51,8 @@ CARD = QColor(28, 24, 40, 200)
 PAD = 28
 CLAMP_PAD = 8
 LIFE_MS = 45_000
-MIN_SCALE = 0.25
+MIN_SCALE = 0.35
+SCALE_HARD_MIN = 0.15
 
 
 class Overlay(QWidget):
@@ -115,6 +116,7 @@ class Overlay(QWidget):
         self._want_x = 0
         self._want_y = 0
         self.target_name = ""
+        self.min_scale = MIN_SCALE
 
     def popup(self, pos: QPoint | None = None, target: str = "") -> None:
         if self.isVisible():
@@ -315,6 +317,13 @@ class Overlay(QWidget):
         rings = ring_count_for(n)
         return self.inner + self.thick + (rings - 1) * (self.thick + self.gap)
 
+    def set_min_scale(self, value: float) -> None:
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            n = MIN_SCALE
+        self.min_scale = max(SCALE_HARD_MIN, min(1.0, n))
+
     def _fit(self) -> None:
         self._fit_to(self.width() or 800, self.height() or 800)
 
@@ -325,8 +334,8 @@ class Overlay(QWidget):
         max_r = self._max_radius()
         budget = min(width, height) / 2 - CLAMP_PAD - 4
         scale = min(1.0, budget / (max_r + 8)) if max_r else 1.0
-        if scale < MIN_SCALE:
-            scale = MIN_SCALE
+        if scale < self.min_scale:
+            scale = self.min_scale
         self.inner = 124.0 * scale
         self.thick = 140.0 * scale
         self.gap = 36.0 * scale
@@ -346,7 +355,7 @@ class Overlay(QWidget):
         ) - CLAMP_PAD
         if room >= r:
             return
-        scale = max(MIN_SCALE, room / r)
+        scale = max(self.min_scale, room / r)
         self.inner *= scale
         self.thick *= scale
         self.gap *= scale
