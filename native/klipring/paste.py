@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .buffer import ClipboardItem
@@ -23,6 +25,136 @@ _IMAGE_MIME = {
     ".gif": "image/gif",
     ".bmp": "image/bmp",
 }
+
+
+_KEEP_TYPES = (
+    "text/plain",
+    "text/plain;charset=utf-8",
+    "text/html",
+    "text/uri-list",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "UTF8_STRING",
+    "TEXT",
+)
+
+
+@dataclass
+class ClipboardHold:
+    """What was on the clipboard before we borrowed it for a paste."""
+
+    text: str = ""
+    html: str = ""
+    uris: list[str] = field(default_factory=list)
+    blobs: dict[str, bytes] = field(default_factory=dict)
+
+    @property
+    def empty(self) -> bool:
+        return not self.text and not self.html and not self.uris and not self.blobs
+
+
+def capture_clipboard() -> ClipboardHold:
+    """Snapshot the live clipboard so a Firefox paste can be undone."""
+    hold = ClipboardHold()
+    try:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QGuiApplication
+
+        md = QGuiApplication.clipboard().mimeData()
+        if md is not None:
+            if md.hasText():
+                hold.text = md.text() or ""
+            if md.hasHtml():
+                hold.html = md.html() or ""
+            if md.hasUrls():
+                hold.uris = [u.toString() for u in md.urls() if u.isValid()]
+    except Exception:
+        pass
+    if not shutil.which("wl-paste"):
+        return hold
+    listed = _wl_paste_text(["--list-types"])
+    types = [t.strip() for t in listed.splitlines() if t.strip()]
+    for mime in types:
+        if mime not in _KEEP_TYPES and not mime.startswith("image/"):
+            continue
+        raw = _wl_paste_bytes(["-n", "--type", mime])
+        if raw:
+            hold.blobs[mime] = raw
+            if mime.startswith("text/plain") and not hold.text:
+                hold.text = raw.decode("utf-8", "replace")
+    return hold
+
+
+def restore_clipboard(hold: ClipboardHold | None) -> None:
+    """Put the borrowed clipboard back. No-op if there was nothing to restore."""
+    if hold is None or hold.empty:
+        return
+    from PySide6.QtCore import QByteArray, QMimeData, QUrl
+    from PySide6.QtGui import QGuiApplication
+
+    md = QMimeData()
+    if hold.uris:
+        md.setUrls([QUrl(u) for u in hold.uris])
+    if hold.text:
+        md.setText(hold.text)
+    if hold.html:
+        md.setHtml(hold.html)
+    for mime, raw in hold.blobs.items():
+        if mime.startswith("text/") or mime in {"TEXT", "UTF8_STRING"}:
+            continue
+        md.setData(mime, QByteArray(raw))
+    QGuiApplication.clipboard().setMimeData(md)
+    blob = _primary_blob(hold)
+    if blob is not None:
+        _offer(blob[0], blob[1])
+
+
+def _primary_blob(hold: ClipboardHold) -> tuple[str, bytes] | None:
+    for mime in ("image/png", "image/jpeg", "image/webp", "text/uri-list", "text/plain"):
+        raw = hold.blobs.get(mime)
+        if raw:
+            return mime, raw
+    if hold.uris:
+        return "text/uri-list", ("\n".join(hold.uris) + "\n").encode("utf-8")
+    if hold.text:
+        return "text/plain", hold.text.encode("utf-8")
+    return None
+
+
+def _wl_paste_text(args: list[str]) -> str:
+    raw = _wl_paste_bytes(args)
+    return raw.decode("utf-8", "replace") if raw else ""
+
+
+def _wl_paste_bytes(args: list[str]) -> bytes:
+    if not shutil.which("wl-paste"):
+        return b""
+    try:
+        r = subprocess.run(
+            ["wl-paste", *args],
+            capture_output=True,
+            timeout=0.8,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return b""
+    return r.stdout if r.returncode == 0 else b""
+
+
+def paste_swapped(item: ClipboardItem, browser: bool = False) -> tuple[bool, str]:
+    """Borrow the clipboard, paste the ring item, then put the original back.
+
+    Firefox on Wayland reads the clipboard it already held when Ctrl+V arrives
+    unless the offer is swapped in first and left alone until the key is done.
+    """
+    previous = capture_clipboard()
+    set_clipboard_item(item)
+    time.sleep(0.08 if browser else 0.03)
+    ok, how = send_paste(browser=browser)
+    time.sleep(0.12 if browser else 0.05)
+    restore_clipboard(previous)
+    return ok, how
 
 
 def set_clipboard_item(item: ClipboardItem) -> None:

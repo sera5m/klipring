@@ -35,7 +35,7 @@ from .focus import (
 from .geometry import DEFAULT_CAPACITY
 from .pointer import looks_captured
 from .overlay import Overlay
-from .paste import click_at, open_clip, save_to_file, send_paste, set_clipboard_item
+from .paste import click_at, open_clip, paste_swapped, save_to_file, send_paste, set_clipboard_item
 from .shortcuts import DEFAULT_CHORD, bind_shortcut
 
 
@@ -319,9 +319,14 @@ class KlipRingApp:
         return screen.geometry().center() if screen else QPoint(0, 0)
 
     def _inject_paste(self) -> None:
-        ok, how = send_paste(browser=is_browser(self._paste_lock[1]))
+        browser = is_browser(self._paste_lock[1])
+        item = self._wait_clip
+        if browser and item is not None:
+            ok, how = paste_swapped(item, browser=True)
+        else:
+            ok, how = send_paste(browser=browser)
         self.buffer.mute(False)
-        QTimer.singleShot(250, lambda: setattr(self, "_mute_clip", False))
+        QTimer.singleShot(400, lambda: setattr(self, "_mute_clip", False))
         QTimer.singleShot(75, self._forget_click_cache)
         if ok:
             self._notify("Pasted", f"into {short_label(self._paste_lock[1])} via {how}")
